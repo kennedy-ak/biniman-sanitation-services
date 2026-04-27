@@ -1,0 +1,99 @@
+from rest_framework import status
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.response import Response
+from rest_framework_simplejwt.tokens import RefreshToken
+
+from accounts.models import Region, Role, User
+from accounts.serializers import (
+    OTPRequestSerializer,
+    OTPVerifySerializer,
+    ProfileUpdateSerializer,
+    RegionSerializer,
+    UserSerializer,
+)
+from accounts.services.otp import request_otp, verify_otp
+
+
+def _tokens_for(user: User) -> dict:
+    refresh = RefreshToken.for_user(user)
+    return {"access": str(refresh.access_token), "refresh": str(refresh)}
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def otp_request(request):
+    serializer = OTPRequestSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    phone = serializer.validated_data["phone"]
+    purpose = serializer.validated_data["purpose"]
+    request_otp(phone, purpose=purpose)
+    return Response({"sent": True, "phone": phone}, status=status.HTTP_200_OK)
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def otp_verify(request):
+    serializer = OTPVerifySerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    data = serializer.validated_data
+
+    verify_otp(data["phone"], data["code"])
+
+    user = User.objects.filter(phone=data["phone"]).first()
+    if user is not None and not user.is_active:
+        return Response(
+            {
+                "detail": (
+                    "Your account has been suspended. Please contact support at "
+                    "support@biniman.com for assistance."
+                )
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
+    created = False
+    if user is None:
+        role = data.get("role") or Role.CUSTOMER
+        user = User.objects.create_user(
+            phone=data["phone"],
+            role=role,
+            full_name=data.get("full_name", ""),
+            region_id=data.get("region_id"),
+            is_phone_verified=True,
+        )
+        created = True
+    else:
+        if not user.is_phone_verified:
+            user.is_phone_verified = True
+            user.save(update_fields=["is_phone_verified"])
+
+    return Response(
+        {
+            "user": UserSerializer(user).data,
+            "tokens": _tokens_for(user),
+            "created": created,
+        },
+        status=status.HTTP_200_OK,
+    )
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def me(request):
+    return Response(UserSerializer(request.user).data)
+
+
+@api_view(["PATCH"])
+@permission_classes([IsAuthenticated])
+def update_profile(request):
+    serializer = ProfileUpdateSerializer(request.user, data=request.data, partial=True)
+    serializer.is_valid(raise_exception=True)
+    user = serializer.save()
+    return Response(UserSerializer(user).data)
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def regions(_request):
+    qs = Region.objects.filter(is_active=True)
+    return Response(RegionSerializer(qs, many=True).data)

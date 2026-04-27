@@ -1,0 +1,443 @@
+"""Admin analytics + dispute resolution endpoints."""
+from datetime import timedelta
+from decimal import Decimal
+
+from django.db.models import Count, Q, Sum
+from django.db.models.functions import TruncDate
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.exceptions import ValidationError
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+
+from accounts.models import Role, User
+from drivers.models import Driver, DriverStatus
+from drivers.permissions import IsAdmin
+from drivers.serializers import DriverSerializer
+from payments.models import Payment, PaymentStatus, Payout, PayoutStatus
+from payments.services.orchestrator import (
+    confirm_payout_success,
+    refund_request,
+    trigger_payout,
+)
+from ratings.services import aggregate_for_user
+from requests_app.models import RequestStatus, ServiceRequest
+from requests_app.serializers import ServiceRequestSerializer
+
+
+def _window(request) -> tuple[int, timezone.datetime]:
+    """Parse ?days=N (default 30) and return (days, since)."""
+    try:
+        days = max(1, min(int(request.query_params.get("days", 30)), 365))
+    except (TypeError, ValueError):
+        days = 30
+    return days, timezone.now() - timedelta(days=days)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated, IsAdmin])
+def overview(request):
+    days, since = _window(request)
+
+    requests_qs = ServiceRequest.objects.filter(created_at__gte=since)
+    total = requests_qs.count()
+    completed = requests_qs.filter(status=RequestStatus.COMPLETED.value).count()
+    cancelled = requests_qs.filter(status=RequestStatus.CANCELLED.value).count()
+    unfulfilled = requests_qs.filter(status=RequestStatus.UNFULFILLED.value).count()
+
+    payments = Payment.objects.filter(
+        created_at__gte=since, status=PaymentStatus.SUCCEEDED
+    )
+    gmv = payments.aggregate(total=Sum("amount"))["total"] or Decimal("0")
+    commission = ServiceRequest.objects.filter(
+        completed_at__gte=since, status=RequestStatus.COMPLETED.value
+    ).aggregate(total=Sum("commission_amount"))["total"] or Decimal("0")
+
+    refunded = Payment.objects.filter(
+        status=PaymentStatus.REFUNDED, refunded_at__gte=since
+    ).aggregate(total=Sum("refund_amount"))["total"] or Decimal("0")
+
+    drivers_total = Driver.objects.count()
+    drivers_approved = Driver.objects.filter(status=DriverStatus.APPROVED).count()
+    drivers_online = Driver.objects.filter(
+        status=DriverStatus.APPROVED, is_online=True
+    ).count()
+    customers_total = User.objects.filter(role=Role.CUSTOMER).count()
+
+    unfulfilled_rate = (unfulfilled / total) if total else 0.0
+
+    return Response(
+        {
+            "window_days": days,
+            "requests": {
+                "total": total,
+                "completed": completed,
+                "cancelled": cancelled,
+                "unfulfilled": unfulfilled,
+                "unfulfilled_rate": round(unfulfilled_rate, 4),
+            },
+            "money": {
+                "gmv": str(gmv),
+                "commission": str(commission),
+                "refunded": str(refunded),
+            },
+            "drivers": {
+                "total": drivers_total,
+                "approved": drivers_approved,
+                "online": drivers_online,
+            },
+            "customers_total": customers_total,
+        }
+    )
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated, IsAdmin])
+def daily_jobs(request):
+    days, since = _window(request)
+    qs = (
+        ServiceRequest.objects.filter(created_at__gte=since)
+        .annotate(day=TruncDate("created_at"))
+        .values("day")
+        .annotate(
+            total=Count("id"),
+            completed=Count("id", filter=Q(status=RequestStatus.COMPLETED.value)),
+            unfulfilled=Count("id", filter=Q(status=RequestStatus.UNFULFILLED.value)),
+            cancelled=Count("id", filter=Q(status=RequestStatus.CANCELLED.value)),
+        )
+        .order_by("day")
+    )
+    rows = [
+        {
+            "day": row["day"].isoformat() if row["day"] else None,
+            "total": row["total"],
+            "completed": row["completed"],
+            "unfulfilled": row["unfulfilled"],
+            "cancelled": row["cancelled"],
+        }
+        for row in qs
+    ]
+    return Response({"window_days": days, "rows": rows})
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated, IsAdmin])
+def top_drivers(request):
+    days, since = _window(request)
+    qs = (
+        ServiceRequest.objects.filter(
+            completed_at__gte=since, status=RequestStatus.COMPLETED.value
+        )
+        .values("driver_id", "driver__user__phone", "driver__user__full_name")
+        .annotate(
+            jobs=Count("id"),
+            gross=Sum("quote_total"),
+            commission=Sum("commission_amount"),
+        )
+        .order_by("-jobs")[:10]
+    )
+    return Response(
+        [
+            {
+                "driver_id": r["driver_id"],
+                "phone": r["driver__user__phone"],
+                "name": r["driver__user__full_name"],
+                "jobs": r["jobs"],
+                "gross": str(r["gross"] or Decimal("0")),
+                "commission": str(r["commission"] or Decimal("0")),
+                "payout": str((r["gross"] or Decimal("0")) - (r["commission"] or Decimal("0"))),
+            }
+            for r in qs
+        ]
+    )
+
+
+# ---------------- Dispute resolution ----------------
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated, IsAdmin])
+def disputes(request):
+    """Surface requests that need admin attention.
+
+    Heuristic: cancelled or unfulfilled with a paid payment (refund stuck);
+    completed requests where the payout failed; pending payouts older than 1 hour.
+    """
+    one_hour = timezone.now() - timedelta(hours=1)
+    flagged = []
+
+    failed_payouts = Payout.objects.filter(status=PayoutStatus.FAILED).select_related(
+        "request", "driver", "driver__user"
+    )
+    for p in failed_payouts:
+        flagged.append(
+            {
+                "kind": "failed_payout",
+                "request_id": p.request_id,
+                "amount": str(p.amount),
+                "driver_phone": p.driver.user.phone,
+                "reason": p.failure_reason,
+                "created_at": p.created_at.isoformat(),
+            }
+        )
+
+    stuck_payouts = Payout.objects.filter(
+        status=PayoutStatus.PENDING, created_at__lt=one_hour
+    ).select_related("request", "driver", "driver__user")
+    for p in stuck_payouts:
+        flagged.append(
+            {
+                "kind": "stuck_payout",
+                "request_id": p.request_id,
+                "amount": str(p.amount),
+                "driver_phone": p.driver.user.phone,
+                "created_at": p.created_at.isoformat(),
+            }
+        )
+
+    refund_pending = Payment.objects.filter(
+        status=PaymentStatus.SUCCEEDED,
+        request__status__in=[
+            RequestStatus.CANCELLED.value, RequestStatus.UNFULFILLED.value,
+        ],
+    ).select_related("request", "customer")
+    for p in refund_pending:
+        flagged.append(
+            {
+                "kind": "refund_pending",
+                "request_id": p.request_id,
+                "amount": str(p.amount),
+                "customer_phone": p.customer.phone,
+                "request_status": p.request.status,
+                "created_at": p.created_at.isoformat(),
+            }
+        )
+
+    return Response(flagged)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated, IsAdmin])
+def force_refund(request, request_id: int):
+    sr = get_object_or_404(ServiceRequest, pk=request_id)
+    refunded = refund_request(sr, reason=f"Admin override by {request.user.phone}")
+    if not refunded:
+        raise ValidationError("Nothing to refund.")
+    return Response({"ok": True, "status": refunded.status})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated, IsAdmin])
+def force_payout(request, request_id: int):
+    sr = get_object_or_404(ServiceRequest, pk=request_id)
+    if sr.status != RequestStatus.COMPLETED.value:
+        raise ValidationError("Request must be completed before payout.")
+    payout = trigger_payout(sr)
+    if not payout:
+        raise ValidationError("Could not initiate payout — check driver MoMo + payment status.")
+    return Response({"ok": True, "status": payout.status})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated, IsAdmin])
+def mark_payout_succeeded(request, payout_id: int):
+    """Manual override for cases where Paystack succeeded but webhook never fired."""
+    payout = get_object_or_404(Payout, pk=payout_id)
+    confirm_payout_succeeded = confirm_payout_success(payout)
+    return Response({"ok": True, "status": confirm_payout_succeeded.status})
+
+
+# ---------------- Users / Drivers directory ----------------
+
+
+def _user_summary(u: User) -> dict:
+    """Aggregate trip + spend stats for a user (customer or driver)."""
+    if u.role == Role.DRIVER:
+        as_driver = ServiceRequest.objects.filter(driver__user=u)
+        total = as_driver.count()
+        completed = as_driver.filter(status=RequestStatus.COMPLETED.value).count()
+        gross = as_driver.filter(status=RequestStatus.COMPLETED.value).aggregate(
+            total=Sum("quote_total")
+        )["total"] or Decimal("0")
+        commission = as_driver.filter(status=RequestStatus.COMPLETED.value).aggregate(
+            total=Sum("commission_amount")
+        )["total"] or Decimal("0")
+        return {
+            "trips_total": total,
+            "trips_completed": completed,
+            "gross": str(gross),
+            "earnings": str(gross - commission),
+        }
+    qs = ServiceRequest.objects.filter(customer=u)
+    total = qs.count()
+    completed = qs.filter(status=RequestStatus.COMPLETED.value).count()
+    # Net spent = succeeded payments tied to non-cancelled, non-unfulfilled requests,
+    # minus refunds. Excludes pending payments from open requests.
+    spent_succeeded = Payment.objects.filter(
+        customer=u, status=PaymentStatus.SUCCEEDED
+    ).exclude(
+        request__status__in=[
+            RequestStatus.CANCELLED.value,
+            RequestStatus.UNFULFILLED.value,
+        ]
+    ).aggregate(total=Sum("amount"))["total"] or Decimal("0")
+    refunded = Payment.objects.filter(
+        customer=u, status=PaymentStatus.REFUNDED
+    ).aggregate(total=Sum("refund_amount"))["total"] or Decimal("0")
+    spent = spent_succeeded - refunded
+    return {
+        "trips_total": total,
+        "trips_completed": completed,
+        "spent": str(spent if spent > 0 else Decimal("0")),
+    }
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated, IsAdmin])
+def list_users(request):
+    """List all users, optionally filtered by ?role=customer|driver|fleet_admin|admin
+    and ?q= (search by phone or full_name). Includes per-user trip/spend summary."""
+    qs = User.objects.select_related("region").all()
+    role = request.query_params.get("role")
+    if role:
+        qs = qs.filter(role=role)
+    q = request.query_params.get("q")
+    if q:
+        qs = qs.filter(Q(phone__icontains=q) | Q(full_name__icontains=q) | Q(email__icontains=q))
+    qs = qs.order_by("-created_at")[:500]
+
+    out = []
+    for u in qs:
+        out.append(
+            {
+                "id": u.id,
+                "phone": u.phone,
+                "email": u.email,
+                "full_name": u.full_name,
+                "role": u.role,
+                "region": u.region.name if u.region else None,
+                "is_active": u.is_active,
+                "is_phone_verified": u.is_phone_verified,
+                "created_at": u.created_at.isoformat(),
+                "stats": _user_summary(u),
+            }
+        )
+    return Response(out)
+
+
+@api_view(["PATCH"])
+@permission_classes([IsAuthenticated, IsAdmin])
+def user_update(request, user_id: int):
+    """Admin: edit name, email, role, or region for any user."""
+    u = get_object_or_404(User, pk=user_id)
+    allowed = {"full_name", "email", "role", "region_id"}
+    payload = {k: v for k, v in request.data.items() if k in allowed}
+    if "role" in payload and payload["role"] not in {r.value for r in Role}:
+        raise ValidationError({"role": "Invalid role."})
+    for k, v in payload.items():
+        setattr(u, k, v if v != "" else None if k == "email" else v)
+    if payload:
+        u.save(update_fields=list(payload.keys()))
+    return Response(
+        {
+            "id": u.id,
+            "phone": u.phone,
+            "email": u.email,
+            "full_name": u.full_name,
+            "role": u.role,
+            "region": u.region.name if u.region else None,
+            "is_active": u.is_active,
+        }
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated, IsAdmin])
+def user_set_active(request, user_id: int):
+    """Admin: ban (is_active=False) or unban (is_active=True) a user.
+    Body: {"active": true|false}. Banned users get a clear error on login."""
+    u = get_object_or_404(User, pk=user_id)
+    if u.id == request.user.id:
+        raise ValidationError("You cannot ban your own account.")
+    active = bool(request.data.get("active", True))
+    u.is_active = active
+    u.save(update_fields=["is_active"])
+    return Response({"id": u.id, "is_active": u.is_active})
+
+
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated, IsAdmin])
+def user_delete(request, user_id: int):
+    """Admin: hard-delete a user. Use with care — cascades to their requests."""
+    u = get_object_or_404(User, pk=user_id)
+    if u.id == request.user.id:
+        raise ValidationError("You cannot delete your own account.")
+    u.delete()
+    return Response({"deleted": True})
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated, IsAdmin])
+def user_detail(request, user_id: int):
+    """Full profile for a single user including trip history + ratings."""
+    u = get_object_or_404(User.objects.select_related("region"), pk=user_id)
+
+    if u.role == Role.DRIVER:
+        trips_qs = ServiceRequest.objects.filter(driver__user=u)
+    else:
+        trips_qs = ServiceRequest.objects.filter(customer=u)
+    trips_qs = trips_qs.select_related("customer", "driver", "driver__user").order_by(
+        "-created_at"
+    )[:100]
+    trips = ServiceRequestSerializer(trips_qs, many=True).data
+
+    rating_summary = aggregate_for_user(u.id)
+    driver_payload = None
+    if u.role == Role.DRIVER:
+        driver = getattr(u, "driver_profile", None)
+        if driver:
+            driver_payload = DriverSerializer(driver).data
+
+    return Response(
+        {
+            "user": {
+                "id": u.id,
+                "phone": u.phone,
+                "email": u.email,
+                "full_name": u.full_name,
+                "role": u.role,
+                "region": u.region.name if u.region else None,
+                "is_active": u.is_active,
+                "is_phone_verified": u.is_phone_verified,
+                "created_at": u.created_at.isoformat(),
+            },
+            "stats": _user_summary(u),
+            "rating": rating_summary,
+            "driver": driver_payload,
+            "trips": trips,
+        }
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated, IsAdmin])
+def admin_force_complete(request, request_id: int):
+    """Force a stuck request into COMPLETED, then trigger payout."""
+    sr = get_object_or_404(ServiceRequest, pk=request_id)
+    if sr.status not in {
+        RequestStatus.ARRIVED.value, RequestStatus.EN_ROUTE.value,
+        RequestStatus.ACCEPTED.value,
+    }:
+        raise ValidationError(f"Cannot force-complete from status '{sr.status}'.")
+    # Walk through legal transitions
+    while sr.status != RequestStatus.COMPLETED.value:
+        if sr.status == RequestStatus.ACCEPTED.value:
+            sr.transition(RequestStatus.EN_ROUTE.value)
+        elif sr.status == RequestStatus.EN_ROUTE.value:
+            sr.transition(RequestStatus.ARRIVED.value)
+        elif sr.status == RequestStatus.ARRIVED.value:
+            sr.transition(RequestStatus.COMPLETED.value)
+        sr.save()
+    trigger_payout(sr)
+    return Response({"ok": True, "status": sr.status})
