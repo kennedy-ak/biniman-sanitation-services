@@ -1,7 +1,9 @@
 from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+
+from liquidgo.throttles import OTPRequestThrottle, OTPVerifyThrottle
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from accounts.models import Region, Role, User
@@ -22,6 +24,7 @@ def _tokens_for(user: User) -> dict:
 
 @api_view(["POST"])
 @permission_classes([AllowAny])
+@throttle_classes([OTPRequestThrottle])
 def otp_request(request):
     serializer = OTPRequestSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
@@ -33,6 +36,7 @@ def otp_request(request):
 
 @api_view(["POST"])
 @permission_classes([AllowAny])
+@throttle_classes([OTPVerifyThrottle])
 def otp_verify(request):
     serializer = OTPVerifySerializer(data=request.data)
     serializer.is_valid(raise_exception=True)

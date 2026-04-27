@@ -5,13 +5,18 @@ from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
 from accounts.models import Role
 from drivers.permissions import IsAdmin
+from liquidgo.throttles import (
+    PaymentInitThrottle,
+    PaymentVerifyThrottle,
+    WebhookThrottle,
+)
 from payments.models import Payment, PaymentStatus, Payout, WebhookEvent
 from payments.serializers import (
     InitPaymentRequestSerializer,
@@ -36,6 +41,7 @@ logger = logging.getLogger(__name__)
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
+@throttle_classes([PaymentInitThrottle])
 def init_payment(request):
     serializer = InitPaymentRequestSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
@@ -59,6 +65,7 @@ def init_payment(request):
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
+@throttle_classes([PaymentVerifyThrottle])
 def verify_payment(request, reference: str):
     payment = get_object_or_404(Payment, paystack_reference=reference)
     if payment.customer_id != request.user.id and not request.user.is_staff:
@@ -85,6 +92,7 @@ def my_payments(request):
 @csrf_exempt
 @api_view(["POST"])
 @permission_classes([AllowAny])
+@throttle_classes([WebhookThrottle])
 def webhook(request):
     raw = request.body
     sig = request.headers.get("x-paystack-signature")
