@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { fetchDaily, fetchOverview, fetchTopDrivers } from '@/api/analytics'
 import { PageHeader } from '@/components/admin/PageHeader'
@@ -52,24 +53,28 @@ export function AdminDashboard() {
             value={`GHS ${formatMoney(o.money.gmv)}`}
             icon="💰"
             tone="primary"
+            to="/admin/transactions"
           />
           <Kpi
             label="Commission"
             value={`GHS ${formatMoney(o.money.commission)}`}
             icon="📈"
             tone="accent"
+            to="/admin/transactions"
           />
           <Kpi
             label="Refunded"
             value={`GHS ${formatMoney(o.money.refunded)}`}
             icon="↩️"
             tone="muted"
+            to="/admin/transactions?status=refunded"
           />
           <Kpi
             label="Customers"
             value={String(o.customers_total)}
             icon="👥"
             tone="muted"
+            to="/admin/users"
           />
         </div>
       </section>
@@ -85,24 +90,28 @@ export function AdminDashboard() {
             value={String(o.requests.total)}
             icon="📋"
             tone="muted"
+            to="/admin/transactions"
           />
           <Kpi
             label="Completed"
             value={String(o.requests.completed)}
             icon="✓"
             tone="success"
+            to="/admin/transactions?status=completed"
           />
           <Kpi
             label="Unfulfilled"
             value={String(o.requests.unfulfilled)}
             icon="⚠️"
             tone="warning"
+            to="/admin/transactions?status=unfulfilled"
           />
           <Kpi
             label="Unfulfilled rate"
             value={`${(o.requests.unfulfilled_rate * 100).toFixed(1)}%`}
             icon="📉"
             tone={o.requests.unfulfilled_rate > 0.1 ? 'warning' : 'muted'}
+            to="/admin/transactions?status=unfulfilled"
           />
         </div>
       </section>
@@ -113,14 +122,27 @@ export function AdminDashboard() {
           Drivers
         </h2>
         <div className="grid sm:grid-cols-3 gap-4">
-          <Kpi label="Total" value={String(o.drivers.total)} icon="🚛" tone="muted" />
-          <Kpi label="Approved" value={String(o.drivers.approved)} icon="✅" tone="success" />
+          <Kpi
+            label="Total"
+            value={String(o.drivers.total)}
+            icon="🚛"
+            tone="muted"
+            to="/admin/drivers"
+          />
+          <Kpi
+            label="Approved"
+            value={String(o.drivers.approved)}
+            icon="✅"
+            tone="success"
+            to="/admin/approvals"
+          />
           <Kpi
             label="Online now"
             value={String(o.drivers.online)}
             icon="🟢"
             tone="primary"
             pulse
+            to="/admin/drivers"
           />
         </div>
       </section>
@@ -231,16 +253,18 @@ function Kpi({
   icon,
   tone,
   pulse,
+  to,
 }: {
   label: string
   value: string
   icon: string
   tone: Tone
   pulse?: boolean
+  to?: string
 }) {
   const c = TONE_CLASSES[tone]
-  return (
-    <div className="bg-white border border-charcoal/5 rounded-2xl p-5 shadow-sm hover:shadow-md transition">
+  const inner = (
+    <>
       <div className="flex items-start justify-between">
         <div className={`w-10 h-10 rounded-xl ${c.bg} ${c.fg} grid place-items-center text-lg`}>
           {icon}
@@ -258,8 +282,24 @@ function Kpi({
       <div className="mt-1 font-heading text-2xl md:text-3xl font-extrabold text-charcoal">
         {value}
       </div>
-    </div>
+    </>
   )
+
+  const baseClasses =
+    'block bg-white border border-charcoal/5 rounded-2xl p-5 shadow-sm transition'
+
+  if (to) {
+    return (
+      <Link
+        to={to}
+        className={`${baseClasses} hover:shadow-md hover:border-primary/30 hover:-translate-y-0.5 cursor-pointer`}
+      >
+        {inner}
+      </Link>
+    )
+  }
+
+  return <div className={`${baseClasses} hover:shadow-md`}>{inner}</div>
 }
 
 function Legend({ color, label }: { color: string; label: string }) {
