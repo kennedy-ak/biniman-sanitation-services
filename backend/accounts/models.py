@@ -89,6 +89,12 @@ class PhoneOTP(models.Model):
         choices=[("login", "Login"), ("signup", "Signup")],
         default="login",
     )
+    channel = models.CharField(
+        max_length=8,
+        choices=[("sms", "SMS"), ("email", "Email")],
+        default="sms",
+    )
+    email = models.EmailField(blank=True, null=True)
     attempts = models.PositiveSmallIntegerField(default=0)
     consumed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)

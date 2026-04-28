@@ -31,6 +31,8 @@ export function OtpAuthForm({ mode }: OtpAuthFormProps) {
   const [role, setRole] = useState<Role>('customer')
   const [fullName, setFullName] = useState('')
   const [regionId, setRegionId] = useState<number | undefined>(undefined)
+  const [channel, setChannel] = useState<'sms' | 'email'>('sms')
+  const [email, setEmail] = useState('')
   const [error, setError] = useState<string | null>(null)
   const codeRefs = useRef<(HTMLInputElement | null)[]>([])
   const [resendCooldown, setResendCooldown] = useState(0)
@@ -45,7 +47,7 @@ export function OtpAuthForm({ mode }: OtpAuthFormProps) {
   const regions = useQuery({ queryKey: ['regions'], queryFn: fetchRegions })
 
   const requestMut = useMutation({
-    mutationFn: () => requestOtp(phone),
+    mutationFn: () => requestOtp(phone, mode, channel, email),
     onSuccess: () => {
       setStep('code')
       setError(null)
@@ -68,10 +70,14 @@ export function OtpAuthForm({ mode }: OtpAuthFormProps) {
   })
 
   const resendMut = useMutation({
-    mutationFn: () => requestOtp(phone),
+    mutationFn: () => requestOtp(phone, mode, channel, email),
     onSuccess: () => {
       setError(null)
-      setResendNote('New code sent. Check your messages.')
+      setResendNote(
+        channel === 'email'
+          ? 'New code sent. Check your inbox.'
+          : 'New code sent. Check your messages.',
+      )
       setResendCooldown(60)
       setTimeout(() => setResendNote(null), 4000)
     },
@@ -177,6 +183,50 @@ export function OtpAuthForm({ mode }: OtpAuthFormProps) {
             />
           </Field>
 
+          <Field label="Send code via">
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setChannel('sms')}
+                className={`p-3 rounded-lg border-2 text-left transition ${
+                  channel === 'sms'
+                    ? 'border-primary bg-primary/5'
+                    : 'border-charcoal/10 hover:border-charcoal/30'
+                }`}
+              >
+                <div className="text-xl">📱</div>
+                <div className="mt-1 font-semibold text-sm">SMS</div>
+                <div className="text-[10px] text-charcoal/60 leading-tight">to your phone</div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setChannel('email')}
+                className={`p-3 rounded-lg border-2 text-left transition ${
+                  channel === 'email'
+                    ? 'border-primary bg-primary/5'
+                    : 'border-charcoal/10 hover:border-charcoal/30'
+                }`}
+              >
+                <div className="text-xl">✉️</div>
+                <div className="mt-1 font-semibold text-sm">Email</div>
+                <div className="text-[10px] text-charcoal/60 leading-tight">to your inbox</div>
+              </button>
+            </div>
+          </Field>
+
+          {channel === 'email' && (
+            <Field label="Email address">
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                className="input"
+              />
+            </Field>
+          )}
+
           {mode === 'signup' && (
             <>
               <Field label="Full name">
@@ -226,7 +276,10 @@ export function OtpAuthForm({ mode }: OtpAuthFormProps) {
           }}
         >
           <div className="text-sm text-charcoal/70">
-            Code sent to <span className="font-semibold text-charcoal">{phone}</span>
+            Code sent to{' '}
+            <span className="font-semibold text-charcoal">
+              {channel === 'email' ? email : phone}
+            </span>
           </div>
           {resendNote && (
             <div className="p-3 rounded-lg bg-green-50 border border-green-200 text-sm text-green-800">

@@ -7,9 +7,16 @@ export interface VerifyResponse {
   created: boolean
 }
 
-export async function requestOtp(phone: string, purpose: 'login' | 'signup' = 'login') {
-  const { data } = await api.post('/auth/otp/request/', { phone, purpose })
-  return data as { sent: boolean; phone: string }
+export async function requestOtp(
+  phone: string,
+  purpose: 'login' | 'signup' = 'login',
+  channel: 'sms' | 'email' = 'sms',
+  email?: string,
+) {
+  const payload: Record<string, unknown> = { phone, purpose, channel }
+  if (channel === 'email' && email) payload.email = email
+  const { data } = await api.post('/auth/otp/request/', payload)
+  return data as { sent: boolean; phone: string; channel: 'sms' | 'email' }
 }
 
 export async function verifyOtp(payload: {

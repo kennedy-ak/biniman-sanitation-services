@@ -24,10 +24,19 @@ class UserSerializer(serializers.ModelSerializer):
 class OTPRequestSerializer(serializers.Serializer):
     phone = serializers.CharField()
     purpose = serializers.ChoiceField(choices=["login", "signup"], default="login")
+    channel = serializers.ChoiceField(choices=["sms", "email"], default="sms")
+    email = serializers.EmailField(required=False, allow_blank=True)
 
     def validate_phone(self, value: str) -> str:
         validate_ghana_phone(value)
         return value
+
+    def validate(self, attrs):
+        if attrs.get("channel") == "email" and not attrs.get("email"):
+            raise serializers.ValidationError(
+                {"email": "Email is required when channel is 'email'."}
+            )
+        return attrs
 
 
 class OTPVerifySerializer(serializers.Serializer):

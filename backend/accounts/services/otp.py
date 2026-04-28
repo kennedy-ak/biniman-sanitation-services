@@ -6,13 +6,19 @@ from django.utils import timezone
 from rest_framework.exceptions import Throttled, ValidationError
 
 from accounts.models import PhoneOTP
+from notifications.services.email import send_email
 from notifications.services.sms import send_sms
 
 MAX_VERIFY_ATTEMPTS = 5
 
 
-def request_otp(phone: str, purpose: str = "login") -> PhoneOTP:
-    """Generate + send a new OTP for a phone number, enforcing rate limits."""
+def request_otp(
+    phone: str,
+    purpose: str = "login",
+    channel: str = "sms",
+    email: str | None = None,
+) -> PhoneOTP:
+    """Generate + send a new OTP, enforcing rate limits. Delivers via SMS or email."""
     now = timezone.now()
 
     last = PhoneOTP.objects.filter(phone=phone).order_by("-created_at").first()
@@ -28,10 +34,32 @@ def request_otp(phone: str, purpose: str = "login") -> PhoneOTP:
 
     code = PhoneOTP.generate_code()
     with transaction.atomic():
-        otp = PhoneOTP.objects.create(phone=phone, code=code, purpose=purpose)
+        otp = PhoneOTP.objects.create(
+            phone=phone,
+            code=code,
+            purpose=purpose,
+            channel=channel,
+            email=email or None,
+        )
 
-    body = f"Your Biniman Sanitation verification code is {code}. Expires in 10 minutes."
-    send_sms(phone, body)
+    if channel == "email" and email:
+        subject = "Your Biniman verification code"
+        text = (
+            f"Your Biniman Sanitation verification code is {code}.\n"
+            "It expires in 10 minutes.\n\n"
+            "If you didn't request this, you can ignore this email."
+        )
+        html = (
+            f"<p>Your Biniman Sanitation verification code is "
+            f"<strong style=\"font-size:18px;letter-spacing:2px\">{code}</strong>.</p>"
+            "<p>It expires in 10 minutes.</p>"
+            "<p style=\"color:#888;font-size:12px\">If you didn't request this, you can ignore this email.</p>"
+        )
+        send_email(email, subject, html, text)
+    else:
+        body = f"Your Biniman Sanitation verification code is {code}. Expires in 10 minutes."
+        send_sms(phone, body)
+
     return otp
 
 

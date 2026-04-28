@@ -28,10 +28,15 @@ def _tokens_for(user: User) -> dict:
 def otp_request(request):
     serializer = OTPRequestSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
-    phone = serializer.validated_data["phone"]
-    purpose = serializer.validated_data["purpose"]
-    request_otp(phone, purpose=purpose)
-    return Response({"sent": True, "phone": phone}, status=status.HTTP_200_OK)
+    data = serializer.validated_data
+    phone = data["phone"]
+    channel = data.get("channel", "sms")
+    email = data.get("email") or None
+    request_otp(phone, purpose=data["purpose"], channel=channel, email=email)
+    return Response(
+        {"sent": True, "phone": phone, "channel": channel},
+        status=status.HTTP_200_OK,
+    )
 
 
 @api_view(["POST"])
