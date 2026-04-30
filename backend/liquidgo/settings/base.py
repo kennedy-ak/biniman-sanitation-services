@@ -128,6 +128,8 @@ REST_FRAMEWORK = {
         "payment_init": "10/min",
         "payment_verify": "20/min",
         "webhook": "240/min",
+        "email_otp_request": "5/hour",
+        "email_otp_verify": "10/hour",
     },
 }
 

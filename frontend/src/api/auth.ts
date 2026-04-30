@@ -37,10 +37,22 @@ export async function fetchMe() {
 
 export async function updateProfile(payload: {
   full_name?: string
-  email?: string
   region_id?: number | null
 }) {
   const { data } = await api.patch<User>('/auth/me/update/', payload)
+  return data
+}
+
+export async function requestEmailOtp(email: string) {
+  const { data } = await api.post<{ sent: boolean; email: string }>(
+    '/auth/email/request/',
+    { email },
+  )
+  return data
+}
+
+export async function verifyEmailOtp(email: string, code: string) {
+  const { data } = await api.post<User>('/auth/email/verify/', { email, code })
   return data
 }
 

@@ -15,6 +15,7 @@ export interface User {
   role: Role
   region: Region | null
   is_phone_verified: boolean
+  is_email_verified: boolean
   is_active: boolean
   created_at: string
 }

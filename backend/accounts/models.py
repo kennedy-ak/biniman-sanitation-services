@@ -53,6 +53,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     )
 
     is_phone_verified = models.BooleanField(default=False)
+    is_email_verified = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
 
@@ -112,3 +113,30 @@ class PhoneOTP(models.Model):
 
     def is_consumed(self) -> bool:
         return self.consumed_at is not None
+
+
+class EmailOTP(models.Model):
+    """Single-use OTP for verifying / changing a user's email address."""
+
+    OTP_TTL = timedelta(minutes=10)
+    REQUEST_COOLDOWN = timedelta(seconds=60)
+    HOURLY_LIMIT = 5
+    MAX_VERIFY_ATTEMPTS = 5
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="email_otps")
+    email = models.EmailField()
+    code = models.CharField(max_length=6)
+    attempts = models.PositiveSmallIntegerField(default=0)
+    consumed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["user", "-created_at"])]
+
+    @classmethod
+    def generate_code(cls) -> str:
+        return f"{secrets.randbelow(1_000_000):06d}"
+
+    def is_expired(self) -> bool:
+        return timezone.now() > self.created_at + self.OTP_TTL

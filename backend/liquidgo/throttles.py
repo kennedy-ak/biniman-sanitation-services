@@ -24,3 +24,11 @@ class PaymentVerifyThrottle(UserRateThrottle):
 
 class WebhookThrottle(AnonRateThrottle):
     scope = "webhook"
+
+
+class EmailOTPRequestThrottle(UserRateThrottle):
+    scope = "email_otp_request"
+
+
+class EmailOTPVerifyThrottle(UserRateThrottle):
+    scope = "email_otp_verify"

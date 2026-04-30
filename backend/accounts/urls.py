@@ -11,5 +11,7 @@ urlpatterns = [
     path("token/refresh/", TokenRefreshView.as_view(), name="token-refresh"),
     path("me/", views.me, name="me"),
     path("me/update/", views.update_profile, name="me-update"),
+    path("email/request/", views.email_otp_request, name="email-otp-request"),
+    path("email/verify/", views.email_otp_verify, name="email-otp-verify"),
     path("regions/", views.regions, name="regions"),
 ]

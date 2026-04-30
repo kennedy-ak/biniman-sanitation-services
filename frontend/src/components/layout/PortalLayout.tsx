@@ -10,6 +10,52 @@ interface PortalLayoutProps {
   navItems: { to: string; label: string; icon?: ReactNode }[]
 }
 
+function EmailReminderBanner() {
+  const user = useAuth((s) => s.user)
+  const location = useLocation()
+  const [dismissed, setDismissed] = useState<boolean>(() => {
+    return sessionStorage.getItem('liquidgo.email_banner_dismissed') === '1'
+  })
+  if (!user) return null
+  // Profile + email-OTP UI is currently only wired into the customer portal.
+  if (user.role !== 'customer') return null
+  const needs = !user.email || !user.is_email_verified
+  if (!needs || dismissed) return null
+  if (location.pathname.includes('/profile')) return null
+
+  const profilePath = '/customer/profile'
+
+  const message = !user.email
+    ? 'Add an email to your profile so you can receive OTP codes by email too.'
+    : 'Your email is unverified. Verify it from your profile to enable email OTP.'
+
+  return (
+    <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+      <div className="text-sm text-amber-900">
+        <span className="font-semibold">Heads up:</span> {message}
+      </div>
+      <div className="flex items-center gap-3">
+        <Link
+          to={profilePath}
+          className="text-sm font-semibold text-amber-900 underline hover:no-underline"
+        >
+          {user.email ? 'Verify now' : 'Add email'}
+        </Link>
+        <button
+          onClick={() => {
+            sessionStorage.setItem('liquidgo.email_banner_dismissed', '1')
+            setDismissed(true)
+          }}
+          className="text-amber-700/80 hover:text-amber-900 text-lg leading-none px-1"
+          aria-label="Dismiss"
+        >
+          ×
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export function PortalLayout({ title, navItems }: PortalLayoutProps) {
   const navigate = useNavigate()
   const location = useLocation()
@@ -118,6 +164,7 @@ export function PortalLayout({ title, navItems }: PortalLayoutProps) {
       )}
 
       <main className="bg-gray-50 min-h-[calc(100vh-3.5rem)] md:min-h-full p-4 sm:p-6 md:p-8 overflow-x-hidden">
+        <EmailReminderBanner />
         <Outlet />
       </main>
     </div>

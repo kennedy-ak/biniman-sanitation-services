@@ -3,17 +3,25 @@ from rest_framework.decorators import api_view, permission_classes, throttle_cla
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
-from liquidgo.throttles import OTPRequestThrottle, OTPVerifyThrottle
+from liquidgo.throttles import (
+    EmailOTPRequestThrottle,
+    EmailOTPVerifyThrottle,
+    OTPRequestThrottle,
+    OTPVerifyThrottle,
+)
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from accounts.models import Region, Role, User
 from accounts.serializers import (
+    EmailOTPRequestSerializer,
+    EmailOTPVerifySerializer,
     OTPRequestSerializer,
     OTPVerifySerializer,
     ProfileUpdateSerializer,
     RegionSerializer,
     UserSerializer,
 )
+from accounts.services.email_otp import request_email_otp, verify_email_otp
 from accounts.services.otp import request_otp, verify_otp
 
 
@@ -98,6 +106,30 @@ def update_profile(request):
     serializer = ProfileUpdateSerializer(request.user, data=request.data, partial=True)
     serializer.is_valid(raise_exception=True)
     user = serializer.save()
+    return Response(UserSerializer(user).data)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+@throttle_classes([EmailOTPRequestThrottle])
+def email_otp_request(request):
+    serializer = EmailOTPRequestSerializer(data=request.data, context={"request": request})
+    serializer.is_valid(raise_exception=True)
+    request_email_otp(request.user, serializer.validated_data["email"])
+    return Response({"sent": True, "email": serializer.validated_data["email"]})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+@throttle_classes([EmailOTPVerifyThrottle])
+def email_otp_verify(request):
+    serializer = EmailOTPVerifySerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    user = verify_email_otp(
+        request.user,
+        serializer.validated_data["email"],
+        serializer.validated_data["code"],
+    )
     return Response(UserSerializer(user).data)
 
 

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchRegions, updateProfile } from '@/api/auth'
+import { fetchRegions, requestEmailOtp, updateProfile, verifyEmailOtp } from '@/api/auth'
 import { fetchMyRequests } from '@/api/requests'
 import { useAuth } from '@/store/auth'
 
@@ -24,7 +24,6 @@ export function CustomerProfile() {
 
   const [form, setForm] = useState({
     full_name: user?.full_name ?? '',
-    email: user?.email ?? '',
     region_id: user?.region?.id,
   })
 
@@ -79,6 +78,9 @@ export function CustomerProfile() {
         />
       </div>
 
+      {/* Email verification card */}
+      <EmailVerificationCard />
+
       {/* Edit form */}
       <form
         className="bg-white border border-charcoal/5 rounded-2xl shadow-sm overflow-hidden"
@@ -105,15 +107,6 @@ export function CustomerProfile() {
               className="input"
               value={form.full_name}
               onChange={(e) => setForm({ ...form, full_name: e.target.value })}
-            />
-          </Field>
-          <Field label="Email" hint="Optional">
-            <input
-              type="email"
-              className="input"
-              placeholder="you@example.com"
-              value={form.email}
-              onChange={(e) => setForm({ ...form, email: e.target.value })}
             />
           </Field>
           <Field label="Region" full>
@@ -206,5 +199,180 @@ function Field({
       </div>
       <div className="mt-1.5">{children}</div>
     </label>
+  )
+}
+
+function EmailVerificationCard() {
+  const qc = useQueryClient()
+  const user = useAuth((s) => s.user)
+  const setUser = useAuth((s) => s.setUser)
+  const isVerified = !!user?.email && !!user?.is_email_verified
+  const [mode, setMode] = useState<'view' | 'edit' | 'awaiting_code'>(
+    isVerified ? 'view' : 'edit',
+  )
+  const [email, setEmail] = useState(isVerified ? '' : (user?.email ?? ''))
+  const [code, setCode] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [info, setInfo] = useState<string | null>(null)
+
+  const editing = mode !== 'view'
+
+  const requestMut = useMutation({
+    mutationFn: () => requestEmailOtp(email.trim().toLowerCase()),
+    onSuccess: () => {
+      setMode('awaiting_code')
+      setError(null)
+      setInfo(`Code sent to ${email.trim().toLowerCase()}. It expires in 10 minutes.`)
+    },
+    onError: (e: any) => {
+      setError(
+        e?.response?.data?.email?.[0] ||
+          e?.response?.data?.detail ||
+          'Failed to send code.',
+      )
+    },
+  })
+
+  const verifyMut = useMutation({
+    mutationFn: () => verifyEmailOtp(email.trim().toLowerCase(), code),
+    onSuccess: (updated) => {
+      setUser(updated)
+      qc.invalidateQueries({ queryKey: ['me'] })
+      setMode('view')
+      setCode('')
+      setEmail('')
+      setError(null)
+      setInfo('Email verified.')
+    },
+    onError: (e: any) => {
+      setError(
+        e?.response?.data?.code?.[0] ||
+          e?.response?.data?.email?.[0] ||
+          e?.response?.data?.detail ||
+          'Verification failed.',
+      )
+    },
+  })
+
+  return (
+    <div className="bg-white border border-charcoal/5 rounded-2xl shadow-sm overflow-hidden">
+      <div className="p-6 border-b border-charcoal/5 flex items-start justify-between gap-4">
+        <div>
+          <h2 className="font-heading font-bold text-lg">Email address</h2>
+          <p className="text-xs text-charcoal/60 mt-0.5">
+            Used as a backup OTP delivery channel and for receipts.
+          </p>
+        </div>
+        {isVerified ? (
+          <span className="inline-flex items-center gap-1 text-xs font-semibold text-green-700 bg-green-50 border border-green-200 rounded-full px-2.5 py-1">
+            ✓ Verified
+          </span>
+        ) : user?.email ? (
+          <span className="inline-flex items-center gap-1 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2.5 py-1">
+            Unverified
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1 text-xs font-semibold text-charcoal/60 bg-charcoal/5 border border-charcoal/10 rounded-full px-2.5 py-1">
+            Not set
+          </span>
+        )}
+      </div>
+
+      <div className="p-6 space-y-4">
+        {!editing && (
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-sm text-charcoal">{user?.email}</div>
+            <button
+              type="button"
+              onClick={() => {
+                setMode('edit')
+                setEmail('')
+                setCode('')
+                setError(null)
+                setInfo(null)
+                requestMut.reset()
+                verifyMut.reset()
+              }}
+              className="text-sm text-primary font-semibold hover:underline"
+            >
+              Change email
+            </button>
+          </div>
+        )}
+
+        {editing && (
+          <>
+            <Field label="Email">
+              <input
+                type="email"
+                className="input"
+                placeholder="you@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                disabled={mode === 'awaiting_code' || requestMut.isPending}
+              />
+            </Field>
+
+            {mode === 'edit' && (
+              <button
+                type="button"
+                disabled={!email || requestMut.isPending}
+                onClick={() => requestMut.mutate()}
+                className="bg-primary text-white px-5 py-2 rounded-lg font-semibold hover:bg-primary/90 disabled:opacity-60 transition"
+              >
+                {requestMut.isPending ? 'Sending…' : 'Send verification code'}
+              </button>
+            )}
+
+            {mode === 'awaiting_code' && (
+              <div className="space-y-3">
+                <Field label="6-digit code">
+                  <input
+                    inputMode="numeric"
+                    maxLength={6}
+                    className="input tracking-[0.4em] font-semibold text-center text-lg"
+                    placeholder="000000"
+                    value={code}
+                    onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+                  />
+                </Field>
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    disabled={code.length !== 6 || verifyMut.isPending}
+                    onClick={() => verifyMut.mutate()}
+                    className="bg-primary text-white px-5 py-2 rounded-lg font-semibold hover:bg-primary/90 disabled:opacity-60 transition"
+                  >
+                    {verifyMut.isPending ? 'Verifying…' : 'Verify email'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => requestMut.mutate()}
+                    disabled={requestMut.isPending}
+                    className="text-sm text-charcoal/70 hover:text-charcoal underline"
+                  >
+                    Resend code
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMode('edit')
+                      setCode('')
+                      setError(null)
+                    }}
+                    className="text-sm text-charcoal/50 hover:text-charcoal/80"
+                  >
+                    Use a different email
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {info && <div className="text-xs text-green-700 font-medium">{info}</div>}
+        {error && <div className="text-xs text-red-700 font-medium">{error}</div>}
+      </div>
+    </div>
   )
 }
