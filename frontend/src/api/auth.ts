@@ -60,3 +60,29 @@ export async function fetchRegions() {
   const { data } = await api.get<Region[]>('/auth/regions/')
   return data
 }
+
+export async function adminListRegions() {
+  const { data } = await api.get<Region[]>('/auth/admin/regions/')
+  return data
+}
+
+export async function adminCreateRegion(payload: {
+  name: string
+  code: string
+  is_active?: boolean
+}) {
+  const { data } = await api.post<Region>('/auth/admin/regions/', payload)
+  return data
+}
+
+export async function adminUpdateRegion(
+  id: number,
+  payload: Partial<Pick<Region, 'name' | 'code' | 'is_active'>>,
+) {
+  const { data } = await api.patch<Region>(`/auth/admin/regions/${id}/`, payload)
+  return data
+}
+
+export async function adminDeleteRegion(id: number) {
+  await api.delete(`/auth/admin/regions/${id}/`)
+}

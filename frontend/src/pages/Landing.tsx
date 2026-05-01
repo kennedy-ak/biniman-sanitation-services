@@ -30,7 +30,7 @@ export function Landing() {
                 <span className={`w-2 h-2 rounded-full ${
                   status === 'online' ? 'bg-[#6FCF97]' : status === 'offline' ? 'bg-red-400' : 'bg-amber-300'
                 } animate-pulse`} />
-                Live in Accra & Kumasi
+                Live in Kumasi
               </div>
               <h1 className="mt-5 font-heading text-4xl sm:text-5xl md:text-6xl font-extrabold leading-[1.05] tracking-tight">
                 Liquid waste,
@@ -74,7 +74,7 @@ export function Landing() {
                   </span>
                 </div>
                 <div className="mt-3 font-bold text-lg">Septic · Medium tank</div>
-                <div className="text-sm text-charcoal/70">East Legon, Accra</div>
+                <div className="text-sm text-charcoal/70">Adum, Kumasi</div>
 
                 <div className="mt-4 h-40 rounded-xl bg-gradient-to-br from-primary-light/40 to-sky/30 relative overflow-hidden">
                   <div className="absolute top-4 left-4 w-3 h-3 rounded-full bg-primary ring-4 ring-primary/30" />

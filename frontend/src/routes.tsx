@@ -26,6 +26,7 @@ import { AdminFlagged } from '@/pages/admin/Flagged'
 import { AdminDisputes } from '@/pages/admin/Disputes'
 import { AdminUsers } from '@/pages/admin/Users'
 import { AdminUserDetail } from '@/pages/admin/UserDetail'
+import { AdminRegions } from '@/pages/admin/Regions'
 import { NotFound } from '@/pages/NotFound'
 
 const customerNav = [
@@ -54,6 +55,7 @@ const adminNav = [
   { to: '/admin/drivers', label: 'Drivers' },
   { to: '/admin/approvals', label: 'Approvals' },
   { to: '/admin/pricing', label: 'Pricing' },
+  { to: '/admin/regions', label: 'Towns' },
   { to: '/admin/transactions', label: 'Transactions' },
   { to: '/admin/flagged', label: 'Flagged users' },
   { to: '/admin/disputes', label: 'Disputes' },
@@ -128,6 +130,7 @@ export function AppRoutes() {
         />
         <Route path="approvals" element={<AdminApprovals />} />
         <Route path="pricing" element={<AdminPricing />} />
+        <Route path="regions" element={<AdminRegions />} />
         <Route path="transactions" element={<AdminTransactions />} />
         <Route path="flagged" element={<AdminFlagged />} />
         <Route path="disputes" element={<AdminDisputes />} />

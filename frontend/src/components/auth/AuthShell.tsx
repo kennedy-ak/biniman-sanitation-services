@@ -42,7 +42,7 @@ export function AuthShell({
           <Bullet>Pay by mobile money or card. Live tracking included.</Bullet>
         </div>
         <div className="relative text-xs text-white/50">
-          © {new Date().getFullYear()} {BRAND.full} · Accra & Kumasi
+          © {new Date().getFullYear()} {BRAND.full} · Kumasi
         </div>
       </div>
 

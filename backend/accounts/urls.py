@@ -14,4 +14,6 @@ urlpatterns = [
     path("email/request/", views.email_otp_request, name="email-otp-request"),
     path("email/verify/", views.email_otp_verify, name="email-otp-verify"),
     path("regions/", views.regions, name="regions"),
+    path("admin/regions/", views.admin_regions, name="admin-regions"),
+    path("admin/regions/<int:pk>/", views.admin_region_detail, name="admin-region-detail"),
 ]

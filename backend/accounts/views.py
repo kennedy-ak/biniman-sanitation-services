@@ -1,7 +1,10 @@
+from django.db.models import ProtectedError
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+
+from drivers.permissions import IsAdmin
 
 from liquidgo.throttles import (
     EmailOTPRequestThrottle,
@@ -138,3 +141,45 @@ def email_otp_verify(request):
 def regions(_request):
     qs = Region.objects.filter(is_active=True)
     return Response(RegionSerializer(qs, many=True).data)
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated, IsAdmin])
+def admin_regions(request):
+    if request.method == "GET":
+        qs = Region.objects.all()
+        return Response(RegionSerializer(qs, many=True).data)
+
+    serializer = RegionSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    region = serializer.save()
+    return Response(RegionSerializer(region).data, status=status.HTTP_201_CREATED)
+
+
+@api_view(["PATCH", "DELETE"])
+@permission_classes([IsAuthenticated, IsAdmin])
+def admin_region_detail(request, pk: int):
+    try:
+        region = Region.objects.get(pk=pk)
+    except Region.DoesNotExist:
+        return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == "DELETE":
+        try:
+            region.delete()
+        except ProtectedError:
+            return Response(
+                {
+                    "detail": (
+                        "Cannot delete: users or other records reference this region. "
+                        "Deactivate it instead."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    serializer = RegionSerializer(region, data=request.data, partial=True)
+    serializer.is_valid(raise_exception=True)
+    region = serializer.save()
+    return Response(RegionSerializer(region).data)
