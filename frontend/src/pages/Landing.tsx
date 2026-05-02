@@ -1,9 +1,23 @@
-import { Link } from 'react-router-dom'
+import { Link, Navigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { getHealth } from '@/api/health'
+import { useAuth } from '@/store/auth'
+import type { Role } from '@/types'
+
+const ROLE_HOME: Record<Role, string> = {
+  customer: '/customer',
+  driver: '/driver',
+  fleet_admin: '/fleet',
+  admin: '/admin',
+}
 
 export function Landing() {
+  const user = useAuth((s) => s.user)
+  const hydrated = useAuth((s) => s.hydrated)
   const health = useQuery({ queryKey: ['health'], queryFn: getHealth })
+  if (hydrated && user) {
+    return <Navigate to={ROLE_HOME[user.role] ?? '/'} replace />
+  }
   const status = health.isLoading
     ? 'checking'
     : health.isError
