@@ -32,3 +32,7 @@ class EmailOTPRequestThrottle(UserRateThrottle):
 
 class EmailOTPVerifyThrottle(UserRateThrottle):
     scope = "email_otp_verify"
+
+
+class AdminUserCreateThrottle(UserRateThrottle):
+    scope = "admin_user_create"
