@@ -130,6 +130,7 @@ REST_FRAMEWORK = {
         "webhook": "240/min",
         "email_otp_request": "5/hour",
         "email_otp_verify": "10/hour",
+        "admin_user_create": "30/hour",
     },
 }
 

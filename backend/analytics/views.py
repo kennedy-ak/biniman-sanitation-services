@@ -1,13 +1,15 @@
 """Admin analytics + dispute resolution endpoints."""
+import logging
+import re
 from datetime import timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from django.db.models import Count, Q, Sum
 from django.db.models.functions import TruncDate
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.exceptions import ValidationError
+from rest_framework.decorators import api_view, permission_classes, throttle_classes
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
@@ -17,6 +19,7 @@ from accounts.models import PHONE_RE, Region, Role, User
 from drivers.models import Driver, DriverStatus, VehicleType
 from drivers.permissions import IsAdmin
 from drivers.serializers import DriverSerializer
+from liquidgo.throttles import AdminUserCreateThrottle
 from payments.models import Payment, PaymentStatus, Payout, PayoutStatus
 from payments.services.orchestrator import (
     confirm_payout_success,
@@ -26,6 +29,8 @@ from payments.services.orchestrator import (
 from ratings.services import aggregate_for_user
 from requests_app.models import RequestStatus, ServiceRequest
 from requests_app.serializers import ServiceRequestSerializer
+
+logger = logging.getLogger(__name__)
 
 
 def _window(request) -> tuple[int, timezone.datetime]:
@@ -328,13 +333,22 @@ def list_users(request):
     return Response(out)
 
 
+PRIVILEGED_ROLES = {Role.ADMIN.value, Role.FLEET_ADMIN.value}
+MOMO_RE = re.compile(r"^0\d{9}$")
+
+
 @api_view(["POST"])
 @permission_classes([IsAuthenticated, IsAdmin])
+@throttle_classes([AdminUserCreateThrottle])
 def user_create(request):
     """Admin: create a new user. If role=driver and driver fields are provided,
     a Driver profile (status=pending) is also created. Account is created with
     an unusable password — the user signs in via OTP. Phone is marked verified
-    since an admin is vouching for it."""
+    since an admin is vouching for it.
+
+    Privileged roles (admin, fleet_admin) require is_superuser to create,
+    preventing lateral self-escalation by ordinary admins.
+    """
     data = request.data or {}
     phone = (data.get("phone") or "").strip()
     if not PHONE_RE.match(phone):
@@ -344,7 +358,11 @@ def user_create(request):
     if role not in {r.value for r in Role}:
         raise ValidationError({"role": "Invalid role."})
 
-    email = (data.get("email") or "").strip() or None
+    if role in PRIVILEGED_ROLES and not request.user.is_superuser:
+        raise PermissionDenied("Only a superuser can create admin or fleet_admin accounts.")
+
+    email_raw = (data.get("email") or "").strip()
+    email = email_raw.lower() or None
     full_name = (data.get("full_name") or "").strip()
     region_id = data.get("region_id")
 
@@ -362,7 +380,6 @@ def user_create(request):
 
     driver_fields = None
     if role == Role.DRIVER.value:
-        # Driver fields are optional — if any are provided, all required ones must be present.
         provided = {
             k: data.get(k)
             for k in (
@@ -389,8 +406,21 @@ def user_create(request):
                 raise ValidationError({"vehicle_capacity_litres": "Must be an integer."})
             if provided["vehicle_capacity_litres"] < 500:
                 raise ValidationError({"vehicle_capacity_litres": "Minimum 500 L."})
+            try:
+                provided["base_fee"] = Decimal(str(provided["base_fee"]))
+                if provided["base_fee"] < 0:
+                    raise InvalidOperation
+            except (InvalidOperation, TypeError):
+                raise ValidationError({"base_fee": "Must be a non-negative decimal."})
             if Driver.objects.filter(vehicle_reg__iexact=provided["vehicle_reg"]).exists():
                 raise ValidationError({"vehicle_reg": "Vehicle already registered."})
+            momo = provided.get("momo_number")
+            if momo and not MOMO_RE.match(momo):
+                raise ValidationError({"momo_number": "MoMo number must be 10 digits starting with 0."})
+            if momo and not provided.get("momo_provider"):
+                raise ValidationError({"momo_provider": "Required when MoMo number is set."})
+            if provided.get("momo_provider") and provided["momo_provider"] not in {"mtn", "vodafone", "airteltigo"}:
+                raise ValidationError({"momo_provider": "Invalid provider."})
             driver_fields = provided
 
     try:
@@ -409,8 +439,27 @@ def user_create(request):
                     status=DriverStatus.PENDING,
                     **driver_fields,
                 )
-    except IntegrityError:
-        raise ValidationError("Could not create user — duplicate phone or email.")
+    except IntegrityError as e:
+        msg = str(e).lower()
+        if "phone" in msg:
+            raise ValidationError({"phone": "A user with this phone already exists."})
+        if "email" in msg:
+            raise ValidationError({"email": "A user with this email already exists."})
+        if "vehicle_reg" in msg:
+            raise ValidationError({"vehicle_reg": "Vehicle already registered."})
+        raise ValidationError("Could not create user — duplicate or constraint violation.")
+
+    logger.info(
+        "admin_user_create",
+        extra={
+            "actor_id": request.user.id,
+            "actor_phone": request.user.phone,
+            "created_user_id": u.id,
+            "created_phone": u.phone,
+            "role": u.role,
+            "with_driver_profile": bool(driver_fields),
+        },
+    )
 
     return Response(
         {

@@ -35,6 +35,7 @@ export function AdminUsers({ initialRole = 'all' }: { initialRole?: RoleFilter }
   const [role, setRole] = useState<RoleFilter>(initialRole)
   const [q, setQ] = useState('')
   const [showCreate, setShowCreate] = useState(false)
+  const [createdMsg, setCreatedMsg] = useState<string | null>(null)
 
   const list = useQuery({
     queryKey: ['admin', 'users', role, q],
@@ -69,7 +70,24 @@ export function AdminUsers({ initialRole = 'all' }: { initialRole?: RoleFilter }
         }
       />
 
-      {showCreate && <CreateUserModal onClose={() => setShowCreate(false)} />}
+      {showCreate && (
+        <CreateUserModal
+          onClose={() => setShowCreate(false)}
+          onCreated={(u) => {
+            setCreatedMsg(
+              `Created ${u.full_name || u.phone} (${u.role}). They can sign in via OTP.`,
+            )
+            setShowCreate(false)
+            setTimeout(() => setCreatedMsg(null), 6000)
+          }}
+        />
+      )}
+
+      {createdMsg && (
+        <div className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-800">
+          {createdMsg}
+        </div>
+      )}
 
       <div className="flex flex-wrap gap-3 items-center justify-between">
         <SegmentedTabs<RoleFilter>
@@ -171,7 +189,13 @@ function UserRow({ u }: { u: UserListRow }) {
   )
 }
 
-function CreateUserModal({ onClose }: { onClose: () => void }) {
+function CreateUserModal({
+  onClose,
+  onCreated,
+}: {
+  onClose: () => void
+  onCreated: (u: UserListRow) => void
+}) {
   const qc = useQueryClient()
   const regions = useQuery({ queryKey: ['regions'], queryFn: fetchRegions })
   const [phone, setPhone] = useState('+233')
@@ -191,9 +215,9 @@ function CreateUserModal({ onClose }: { onClose: () => void }) {
 
   const create = useMutation({
     mutationFn: (payload: UserCreatePayload) => createAdminUser(payload),
-    onSuccess: () => {
+    onSuccess: (u) => {
       qc.invalidateQueries({ queryKey: ['admin', 'users'] })
-      onClose()
+      onCreated(u)
     },
     onError: (e: unknown) => {
       const detail = (e as { response?: { data?: unknown } })?.response?.data
@@ -214,6 +238,10 @@ function CreateUserModal({ onClose }: { onClose: () => void }) {
     setError(null)
     if (!/^\+233\d{9}$/.test(phone)) {
       setError('Phone must be +233 followed by 9 digits.')
+      return
+    }
+    if (role === 'driver' && includeDriver && momoNumber && !/^0\d{9}$/.test(momoNumber)) {
+      setError('MoMo number must be 10 digits starting with 0.')
       return
     }
     const payload: UserCreatePayload = {
