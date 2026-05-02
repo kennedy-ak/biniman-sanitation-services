@@ -9,6 +9,7 @@ urlpatterns = [
     path("daily/", views.daily_jobs, name="daily"),
     path("top-drivers/", views.top_drivers, name="top-drivers"),
     path("users/", views.list_users, name="list-users"),
+    path("users/create/", views.user_create, name="user-create"),
     path("users/<int:user_id>/", views.user_detail, name="user-detail"),
     path("users/<int:user_id>/update/", views.user_update, name="user-update"),
     path("users/<int:user_id>/active/", views.user_set_active, name="user-active"),

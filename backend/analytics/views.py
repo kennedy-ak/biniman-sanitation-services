@@ -11,8 +11,10 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from accounts.models import Role, User
-from drivers.models import Driver, DriverStatus
+from django.db import IntegrityError, transaction
+
+from accounts.models import PHONE_RE, Region, Role, User
+from drivers.models import Driver, DriverStatus, VehicleType
 from drivers.permissions import IsAdmin
 from drivers.serializers import DriverSerializer
 from payments.models import Payment, PaymentStatus, Payout, PayoutStatus
@@ -324,6 +326,107 @@ def list_users(request):
             }
         )
     return Response(out)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated, IsAdmin])
+def user_create(request):
+    """Admin: create a new user. If role=driver and driver fields are provided,
+    a Driver profile (status=pending) is also created. Account is created with
+    an unusable password — the user signs in via OTP. Phone is marked verified
+    since an admin is vouching for it."""
+    data = request.data or {}
+    phone = (data.get("phone") or "").strip()
+    if not PHONE_RE.match(phone):
+        raise ValidationError({"phone": "Phone must be in E.164 format, e.g. +233241234567"})
+
+    role = data.get("role") or Role.CUSTOMER.value
+    if role not in {r.value for r in Role}:
+        raise ValidationError({"role": "Invalid role."})
+
+    email = (data.get("email") or "").strip() or None
+    full_name = (data.get("full_name") or "").strip()
+    region_id = data.get("region_id")
+
+    if User.objects.filter(phone=phone).exists():
+        raise ValidationError({"phone": "A user with this phone already exists."})
+    if email and User.objects.filter(email__iexact=email).exists():
+        raise ValidationError({"email": "A user with this email already exists."})
+
+    region = None
+    if region_id:
+        try:
+            region = Region.objects.get(pk=region_id)
+        except Region.DoesNotExist:
+            raise ValidationError({"region_id": "Region not found."})
+
+    driver_fields = None
+    if role == Role.DRIVER.value:
+        # Driver fields are optional — if any are provided, all required ones must be present.
+        provided = {
+            k: data.get(k)
+            for k in (
+                "vehicle_reg",
+                "vehicle_type",
+                "vehicle_capacity_litres",
+                "license_number",
+                "base_fee",
+                "momo_number",
+                "momo_provider",
+            )
+            if data.get(k) not in (None, "")
+        }
+        if provided:
+            required = ["vehicle_reg", "vehicle_type", "vehicle_capacity_litres", "license_number", "base_fee"]
+            missing = [f for f in required if f not in provided]
+            if missing:
+                raise ValidationError({f: "Required when creating a driver profile." for f in missing})
+            if provided["vehicle_type"] not in {v.value for v in VehicleType}:
+                raise ValidationError({"vehicle_type": "Invalid vehicle type."})
+            try:
+                provided["vehicle_capacity_litres"] = int(provided["vehicle_capacity_litres"])
+            except (TypeError, ValueError):
+                raise ValidationError({"vehicle_capacity_litres": "Must be an integer."})
+            if provided["vehicle_capacity_litres"] < 500:
+                raise ValidationError({"vehicle_capacity_litres": "Minimum 500 L."})
+            if Driver.objects.filter(vehicle_reg__iexact=provided["vehicle_reg"]).exists():
+                raise ValidationError({"vehicle_reg": "Vehicle already registered."})
+            driver_fields = provided
+
+    try:
+        with transaction.atomic():
+            u = User.objects.create_user(
+                phone=phone,
+                email=email,
+                full_name=full_name,
+                role=role,
+                region=region,
+                is_phone_verified=True,
+            )
+            if driver_fields:
+                Driver.objects.create(
+                    user=u,
+                    status=DriverStatus.PENDING,
+                    **driver_fields,
+                )
+    except IntegrityError:
+        raise ValidationError("Could not create user — duplicate phone or email.")
+
+    return Response(
+        {
+            "id": u.id,
+            "phone": u.phone,
+            "email": u.email,
+            "full_name": u.full_name,
+            "role": u.role,
+            "region": u.region.name if u.region else None,
+            "is_active": u.is_active,
+            "is_phone_verified": u.is_phone_verified,
+            "created_at": u.created_at.isoformat(),
+            "stats": _user_summary(u),
+        },
+        status=201,
+    )
 
 
 @api_view(["PATCH"])

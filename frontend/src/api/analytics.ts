@@ -124,6 +124,27 @@ export interface UserDetailResponse {
   trips: ServiceRequest[]
 }
 
+export interface UserCreatePayload {
+  phone: string
+  full_name?: string
+  email?: string | null
+  role: Role
+  region_id?: number | null
+  // driver-only (optional)
+  vehicle_reg?: string
+  vehicle_type?: 'small_tanker' | 'medium_tanker' | 'large_tanker'
+  vehicle_capacity_litres?: number
+  license_number?: string
+  base_fee?: string
+  momo_number?: string
+  momo_provider?: 'mtn' | 'vodafone' | 'airteltigo'
+}
+
+export async function createAdminUser(payload: UserCreatePayload) {
+  const { data } = await api.post<UserListRow>('/analytics/users/create/', payload)
+  return data
+}
+
 export async function fetchAdminUsers(params: { role?: Role; q?: string } = {}) {
   const { data } = await api.get<UserListRow[]>('/analytics/users/', { params })
   return data
