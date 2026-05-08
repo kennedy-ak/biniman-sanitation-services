@@ -4,8 +4,9 @@ from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, parser_classes, permission_classes
 from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
@@ -91,6 +92,7 @@ def quote_preview(request):
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
+@parser_classes([MultiPartParser, FormParser, JSONParser])
 def create_request(request):
     if request.user.role not in {Role.CUSTOMER, Role.ADMIN}:
         raise PermissionDenied("Only customers can create requests.")
@@ -110,6 +112,21 @@ def create_request(request):
         driver_base_fee=_avg_base_fee_for_region(region),
     )
 
+    survey_fields = {
+        k: data[k]
+        for k in (
+            "gate_fits_truck", "tank_location", "truck_parking_distance",
+            "tank_cover_state", "last_emptied", "preferred_time",
+        )
+        if data.get(k)
+    }
+    for k in ("is_overflowing", "someone_on_site"):
+        if data.get(k) is not None:
+            survey_fields[k] = data[k]
+    for k in ("gate_photo", "tank_cover_photo"):
+        if data.get(k):
+            survey_fields[k] = data[k]
+
     with transaction.atomic():
         sr = ServiceRequest.objects.create(
             customer=request.user,
@@ -126,6 +143,7 @@ def create_request(request):
             quote_distance_fee=quote.distance_fee,
             quote_tier_fee=quote.tier_fee,
             commission_amount=quote.commission,
+            **survey_fields,
         )
 
     # Cascade now fires only after payment succeeds (see payments.orchestrator).

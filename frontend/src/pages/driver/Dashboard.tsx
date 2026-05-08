@@ -14,7 +14,7 @@ import {
 import { useDriverSocket } from '@/hooks/useRequestSocket'
 import { useLocationBroadcaster } from '@/hooks/useLocationBroadcaster'
 import { RatingForm } from '@/components/RatingForm'
-import type { RequestStatus } from '@/types'
+import type { RequestStatus, ServiceRequest } from '@/types'
 
 const NEXT_STATUS: Record<RequestStatus, RequestStatus | null> = {
   accepted: 'en_route',
@@ -185,6 +185,7 @@ export function DriverDashboard() {
               {active.notes && (
                 <p className="mt-1 text-sm">📝 {active.notes}</p>
               )}
+              <SiteSurvey req={active} />
               <p className="mt-2 text-sm">
                 Earnings (after commission):{' '}
                 <span className="font-bold">
@@ -230,6 +231,7 @@ export function DriverDashboard() {
           <p className="text-xs text-charcoal/50">
             Expires at {new Date(offer.expires_at).toLocaleTimeString()}
           </p>
+          <SiteSurvey req={offer.request} />
           <div className="mt-4 flex gap-3">
             <button
               onClick={() => acceptMut.mutate(offer.assignment_id)}
@@ -268,6 +270,106 @@ export function DriverDashboard() {
         <p className="mt-6 text-charcoal/60">
           You're offline. Toggle online above to start receiving jobs.
         </p>
+      )}
+    </div>
+  )
+}
+
+const GATE_FIT_LABEL: Record<string, string> = {
+  yes: 'Fits',
+  no: 'Too small',
+  unsure: 'Not sure',
+}
+const TANK_LOC_LABEL: Record<string, string> = {
+  front: 'Front',
+  side: 'Side',
+  back: 'Back',
+  under_driveway: 'Under driveway',
+  other: 'Other',
+}
+const PARKING_LABEL: Record<string, string> = {
+  at_gate: 'At gate',
+  '5_10': '5–10 m',
+  '10_20': '10–20 m',
+  '20_plus': '20 m+',
+}
+const COVER_LABEL: Record<string, string> = {
+  open: 'Open',
+  closed_accessible: 'Closed (accessible)',
+  sealed: 'Sealed (break)',
+  unknown: 'Unknown',
+}
+const LAST_LABEL: Record<string, string> = {
+  lt_6m: '<6 mo',
+  '6_12m': '6–12 mo',
+  '1_2y': '1–2 y',
+  gt_2y: '2 y+',
+  never: 'Never',
+  unknown: 'Unknown',
+}
+const TIME_LABEL: Record<string, string> = {
+  asap: 'ASAP',
+  morning: 'Morning',
+  afternoon: 'Afternoon',
+  evening: 'Evening',
+}
+
+function SiteSurvey({ req }: { req: ServiceRequest }) {
+  const facts: { k: string; v: string }[] = []
+  if (req.gate_fits_truck) facts.push({ k: 'Gate', v: GATE_FIT_LABEL[req.gate_fits_truck] })
+  if (req.tank_location) facts.push({ k: 'Tank at', v: TANK_LOC_LABEL[req.tank_location] })
+  if (req.truck_parking_distance)
+    facts.push({ k: 'Park', v: PARKING_LABEL[req.truck_parking_distance] })
+  if (req.tank_cover_state) facts.push({ k: 'Cover', v: COVER_LABEL[req.tank_cover_state] })
+  if (req.last_emptied) facts.push({ k: 'Last emptied', v: LAST_LABEL[req.last_emptied] })
+  if (req.is_overflowing != null)
+    facts.push({ k: 'Overflowing', v: req.is_overflowing ? 'Yes' : 'No' })
+  if (req.preferred_time) facts.push({ k: 'When', v: TIME_LABEL[req.preferred_time] })
+  if (req.someone_on_site != null)
+    facts.push({ k: 'On site', v: req.someone_on_site ? 'Yes' : 'No' })
+
+  if (facts.length === 0 && !req.gate_photo && !req.tank_cover_photo) return null
+
+  return (
+    <div className="mt-3 rounded-lg border border-charcoal/10 bg-white/60 p-3">
+      <div className="text-[11px] uppercase tracking-wider font-bold text-charcoal/60 mb-2">
+        Site survey
+      </div>
+      {facts.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mb-2">
+          {facts.map((f) => (
+            <span
+              key={f.k}
+              className="text-xs px-2 py-1 rounded-full bg-charcoal/5 text-charcoal/80"
+            >
+              <span className="font-semibold text-charcoal/60">{f.k}:</span> {f.v}
+            </span>
+          ))}
+        </div>
+      )}
+      {(req.gate_photo || req.tank_cover_photo) && (
+        <div className="flex gap-2">
+          {req.gate_photo && (
+            <a href={req.gate_photo} target="_blank" rel="noreferrer">
+              <img
+                src={req.gate_photo}
+                alt="Gate"
+                className="w-20 h-20 object-cover rounded-md border border-charcoal/10"
+              />
+              <div className="text-[10px] text-center text-charcoal/60 mt-0.5">Gate</div>
+            </a>
+          )}
+          {req.tank_cover_photo && (
+            <a href={req.tank_cover_photo} target="_blank" rel="noreferrer">
+              <img
+                src={req.tank_cover_photo}
+                alt="Tank"
+                className="w-20 h-20 object-cover rounded-md border border-charcoal/10"
+              />
+              <div className="text-[10px] text-center text-charcoal/60 mt-0.5">Tank</div>
+            </a>
+          )}
+        </div>
       )}
     </div>
   )

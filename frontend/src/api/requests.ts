@@ -1,9 +1,15 @@
 import { api } from './client'
 import type {
   DriverOffer,
+  GateFit,
+  LastEmptied,
+  ParkingDistance,
+  PreferredTime,
   QuotePreview,
   RequestStatus,
   ServiceRequest,
+  TankCoverState,
+  TankLocation,
   VolumeTier,
   WasteType,
 } from '@/types'
@@ -30,10 +36,28 @@ export interface CreateRequestPayload {
   pickup_lng: string
   pickup_address?: string
   notes?: string
+  gate_fits_truck?: GateFit | ''
+  gate_photo?: File | null
+  tank_location?: TankLocation | ''
+  truck_parking_distance?: ParkingDistance | ''
+  tank_cover_photo?: File | null
+  tank_cover_state?: TankCoverState | ''
+  last_emptied?: LastEmptied | ''
+  is_overflowing?: boolean | null
+  preferred_time?: PreferredTime | ''
+  someone_on_site?: boolean | null
 }
 
 export async function createRequest(payload: CreateRequestPayload) {
-  const { data } = await api.post<ServiceRequest>('/requests/', payload)
+  const fd = new FormData()
+  for (const [k, v] of Object.entries(payload)) {
+    if (v === undefined || v === null || v === '') continue
+    if (v instanceof File) fd.append(k, v)
+    else fd.append(k, String(v))
+  }
+  const { data } = await api.post<ServiceRequest>('/requests/', fd, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
   return data
 }
 

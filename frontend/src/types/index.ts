@@ -65,6 +65,28 @@ export interface Driver {
 export type WasteType = 'septic' | 'soak_pit' | 'industrial'
 export type VolumeTier = 'small' | 'medium' | 'large'
 
+export type GateFit = 'yes' | 'no' | 'unsure'
+export type TankLocation =
+  | 'front'
+  | 'side'
+  | 'back'
+  | 'under_driveway'
+  | 'other'
+export type ParkingDistance = 'at_gate' | '5_10' | '10_20' | '20_plus'
+export type TankCoverState =
+  | 'open'
+  | 'closed_accessible'
+  | 'sealed'
+  | 'unknown'
+export type LastEmptied =
+  | 'lt_6m'
+  | '6_12m'
+  | '1_2y'
+  | 'gt_2y'
+  | 'never'
+  | 'unknown'
+export type PreferredTime = 'asap' | 'morning' | 'afternoon' | 'evening'
+
 export type RequestStatus =
   | 'pending'
   | 'assigned'
@@ -86,6 +108,16 @@ export interface ServiceRequest {
   pickup_lng: string
   pickup_address: string
   notes: string
+  gate_fits_truck: GateFit | ''
+  gate_photo: string | null
+  tank_location: TankLocation | ''
+  truck_parking_distance: ParkingDistance | ''
+  tank_cover_photo: string | null
+  tank_cover_state: TankCoverState | ''
+  last_emptied: LastEmptied | ''
+  is_overflowing: boolean | null
+  preferred_time: PreferredTime | ''
+  someone_on_site: boolean | null
   quote_total: string
   quote_base_fee: string
   quote_distance_km: string

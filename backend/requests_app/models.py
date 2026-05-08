@@ -38,6 +38,50 @@ ALLOWED_TRANSITIONS = {
 }
 
 
+class GateFit(models.TextChoices):
+    YES = "yes", "Yes"
+    NO = "no", "No"
+    UNSURE = "unsure", "Not sure"
+
+
+class TankLocation(models.TextChoices):
+    FRONT = "front", "Front of house"
+    SIDE = "side", "Side of house"
+    BACK = "back", "Back of house"
+    UNDER_DRIVEWAY = "under_driveway", "Under driveway"
+    OTHER = "other", "Other"
+
+
+class ParkingDistance(models.TextChoices):
+    AT_GATE = "at_gate", "At the gate"
+    M_5_10 = "5_10", "5–10 m"
+    M_10_20 = "10_20", "10–20 m"
+    M_20_PLUS = "20_plus", "20 m+"
+
+
+class TankCoverState(models.TextChoices):
+    OPEN = "open", "Open"
+    CLOSED_ACCESSIBLE = "closed_accessible", "Closed but accessible"
+    SEALED = "sealed", "Sealed (needs breaking)"
+    UNKNOWN = "unknown", "Unknown"
+
+
+class LastEmptied(models.TextChoices):
+    LT_6M = "lt_6m", "Less than 6 months"
+    M_6_12 = "6_12m", "6–12 months"
+    Y_1_2 = "1_2y", "1–2 years"
+    GT_2Y = "gt_2y", "2 years+"
+    NEVER = "never", "Never"
+    UNKNOWN = "unknown", "Unknown"
+
+
+class PreferredTime(models.TextChoices):
+    ASAP = "asap", "ASAP"
+    MORNING = "morning", "Morning"
+    AFTERNOON = "afternoon", "Afternoon"
+    EVENING = "evening", "Evening"
+
+
 class ServiceRequest(models.Model):
     customer = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="service_requests"
@@ -60,6 +104,32 @@ class ServiceRequest(models.Model):
     pickup_lng = models.DecimalField(max_digits=10, decimal_places=7)
     pickup_address = models.CharField(max_length=300, blank=True)
     notes = models.TextField(blank=True)
+
+    # Site survey — captured at booking so the driver knows what to expect.
+    gate_fits_truck = models.CharField(
+        max_length=8, choices=GateFit.choices, blank=True, default=""
+    )
+    gate_photo = models.ImageField(upload_to="requests/gate/", blank=True, null=True)
+    tank_location = models.CharField(
+        max_length=16, choices=TankLocation.choices, blank=True, default=""
+    )
+    truck_parking_distance = models.CharField(
+        max_length=8, choices=ParkingDistance.choices, blank=True, default=""
+    )
+    tank_cover_photo = models.ImageField(
+        upload_to="requests/tank/", blank=True, null=True
+    )
+    tank_cover_state = models.CharField(
+        max_length=20, choices=TankCoverState.choices, blank=True, default=""
+    )
+    last_emptied = models.CharField(
+        max_length=10, choices=LastEmptied.choices, blank=True, default=""
+    )
+    is_overflowing = models.BooleanField(null=True, blank=True)
+    preferred_time = models.CharField(
+        max_length=10, choices=PreferredTime.choices, blank=True, default=""
+    )
+    someone_on_site = models.BooleanField(null=True, blank=True)
 
     # Quote (snapshot at booking time)
     quote_total = models.DecimalField(max_digits=10, decimal_places=2)

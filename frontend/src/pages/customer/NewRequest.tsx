@@ -4,7 +4,17 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { fetchRegions } from '@/api/auth'
 import { createRequest, previewQuote } from '@/api/requests'
 import { useAuth } from '@/store/auth'
-import type { QuotePreview, VolumeTier, WasteType } from '@/types'
+import type {
+  GateFit,
+  LastEmptied,
+  ParkingDistance,
+  PreferredTime,
+  QuotePreview,
+  TankCoverState,
+  TankLocation,
+  VolumeTier,
+  WasteType,
+} from '@/types'
 
 const WASTE_TYPES: {
   value: WasteType
@@ -23,6 +33,50 @@ const TIERS: { value: VolumeTier; label: string; range: string }[] = [
   { value: 'large', label: 'Large', range: '5,000+ L' },
 ]
 
+const GATE_FIT_OPTS: { value: GateFit; label: string }[] = [
+  { value: 'yes', label: 'Yes, it fits' },
+  { value: 'no', label: 'No, too small' },
+  { value: 'unsure', label: 'Not sure' },
+]
+
+const TANK_LOCATION_OPTS: { value: TankLocation; label: string }[] = [
+  { value: 'front', label: 'Front of house' },
+  { value: 'side', label: 'Side of house' },
+  { value: 'back', label: 'Back of house' },
+  { value: 'under_driveway', label: 'Under driveway' },
+  { value: 'other', label: 'Other' },
+]
+
+const PARKING_OPTS: { value: ParkingDistance; label: string }[] = [
+  { value: 'at_gate', label: 'Right at the gate' },
+  { value: '5_10', label: '5–10 m away' },
+  { value: '10_20', label: '10–20 m away' },
+  { value: '20_plus', label: '20 m or more' },
+]
+
+const TANK_COVER_OPTS: { value: TankCoverState; label: string }[] = [
+  { value: 'open', label: 'Open / no cover' },
+  { value: 'closed_accessible', label: 'Closed but easy to open' },
+  { value: 'sealed', label: 'Sealed (needs breaking)' },
+  { value: 'unknown', label: 'Not sure' },
+]
+
+const LAST_EMPTIED_OPTS: { value: LastEmptied; label: string }[] = [
+  { value: 'lt_6m', label: 'Less than 6 months ago' },
+  { value: '6_12m', label: '6–12 months ago' },
+  { value: '1_2y', label: '1–2 years ago' },
+  { value: 'gt_2y', label: 'More than 2 years ago' },
+  { value: 'never', label: 'Never emptied' },
+  { value: 'unknown', label: "Don't know" },
+]
+
+const PREFERRED_TIME_OPTS: { value: PreferredTime; label: string }[] = [
+  { value: 'asap', label: 'ASAP' },
+  { value: 'morning', label: 'Morning' },
+  { value: 'afternoon', label: 'Afternoon' },
+  { value: 'evening', label: 'Evening' },
+]
+
 export function CustomerNewRequest() {
   const navigate = useNavigate()
   const user = useAuth((s) => s.user)
@@ -39,6 +93,18 @@ export function CustomerNewRequest() {
   const [quoting, setQuoting] = useState(false)
   const [locating, setLocating] = useState(false)
   const [locateError, setLocateError] = useState<string | null>(null)
+
+  // Site survey
+  const [gateFits, setGateFits] = useState<GateFit | ''>('')
+  const [gatePhoto, setGatePhoto] = useState<File | null>(null)
+  const [tankLocation, setTankLocation] = useState<TankLocation | ''>('')
+  const [parkingDistance, setParkingDistance] = useState<ParkingDistance | ''>('')
+  const [tankCoverPhoto, setTankCoverPhoto] = useState<File | null>(null)
+  const [tankCoverState, setTankCoverState] = useState<TankCoverState | ''>('')
+  const [lastEmptied, setLastEmptied] = useState<LastEmptied | ''>('')
+  const [isOverflowing, setIsOverflowing] = useState<boolean | null>(null)
+  const [preferredTime, setPreferredTime] = useState<PreferredTime | ''>('')
+  const [someoneOnSite, setSomeoneOnSite] = useState<boolean | null>(null)
 
   useEffect(() => {
     if (regions.data && !regionId) setRegionId(regions.data[0]?.id)
@@ -103,11 +169,21 @@ export function CustomerNewRequest() {
         pickup_lng: lng,
         pickup_address: address,
         notes,
+        gate_fits_truck: gateFits,
+        gate_photo: gatePhoto,
+        tank_location: tankLocation,
+        truck_parking_distance: parkingDistance,
+        tank_cover_photo: tankCoverPhoto,
+        tank_cover_state: tankCoverState,
+        last_emptied: lastEmptied,
+        is_overflowing: isOverflowing,
+        preferred_time: preferredTime,
+        someone_on_site: someoneOnSite,
       }),
     onSuccess: (sr) => navigate(`/customer/requests/${sr.id}/pay`),
   })
 
-  const canSubmit = !!regionId && !!lat && !!lng
+  const canSubmit = !!regionId && !!lat && !!lng && !!gatePhoto
 
   return (
     <div className="space-y-6 max-w-4xl">
@@ -162,12 +238,19 @@ export function CustomerNewRequest() {
           <Section step="3" title="Where are we picking up?">
             <div className="space-y-4">
               <div className="grid sm:grid-cols-2 gap-3">
-                <Field label="Region">
+                <Field label="Town">
                   <select
                     className="input"
                     value={regionId ?? ''}
                     onChange={(e) => setRegionId(Number(e.target.value))}
                   >
+                    <option value="" disabled>
+                      {regions.isLoading
+                        ? 'Loading towns…'
+                        : regions.data?.length
+                          ? 'Select a town'
+                          : 'No towns available'}
+                    </option>
                     {regions.data?.map((r) => (
                       <option key={r.id} value={r.id}>
                         {r.name}
@@ -226,6 +309,108 @@ export function CustomerNewRequest() {
               </Field>
             </div>
           </Section>
+
+          {/* Step 4: Site survey */}
+          <Section step="4" title="Help your driver prepare">
+            <div className="space-y-5">
+              <div className="rounded-xl border border-charcoal/10 overflow-hidden bg-charcoal/[0.02]">
+                <div className="relative aspect-[16/8] bg-charcoal/5 grid place-items-center">
+                  <img
+                    src="/truck-reference.jpg"
+                    alt="Our vacuum truck"
+                    className="absolute inset-0 w-full h-full object-cover"
+                    onError={(e) => {
+                      (e.currentTarget as HTMLImageElement).style.display = 'none'
+                    }}
+                  />
+                  <span className="relative text-charcoal/50 text-sm font-semibold">
+                    🚛 Reference: our vacuum truck
+                  </span>
+                </div>
+                <div className="p-4">
+                  <div className="text-sm font-semibold text-charcoal mb-1">
+                    Looking at this truck — will it fit through your gate?
+                  </div>
+                  <div className="text-xs text-charcoal/60 mb-3">
+                    A standard vacuum truck is about 2.4 m wide and 3 m tall.
+                  </div>
+                  <Choices
+                    value={gateFits}
+                    onChange={(v) => setGateFits(v as GateFit)}
+                    options={GATE_FIT_OPTS}
+                  />
+                </div>
+              </div>
+
+              <PhotoField
+                label="Photo of your gate"
+                hint="Required"
+                file={gatePhoto}
+                onFile={setGatePhoto}
+              />
+
+              <Field label="Where is the septic tank?">
+                <Choices
+                  value={tankLocation}
+                  onChange={(v) => setTankLocation(v as TankLocation)}
+                  options={TANK_LOCATION_OPTS}
+                />
+              </Field>
+
+              <Field label="How close can the truck park to the tank?">
+                <Choices
+                  value={parkingDistance}
+                  onChange={(v) => setParkingDistance(v as ParkingDistance)}
+                  options={PARKING_OPTS}
+                />
+              </Field>
+
+              <Field label="What does the tank cover look like?">
+                <Choices
+                  value={tankCoverState}
+                  onChange={(v) => setTankCoverState(v as TankCoverState)}
+                  options={TANK_COVER_OPTS}
+                />
+              </Field>
+
+              <PhotoField
+                label="Photo of the tank cover / manhole"
+                hint="Optional"
+                file={tankCoverPhoto}
+                onFile={setTankCoverPhoto}
+              />
+
+              <Field label="When was it last emptied?">
+                <Choices
+                  value={lastEmptied}
+                  onChange={(v) => setLastEmptied(v as LastEmptied)}
+                  options={LAST_EMPTIED_OPTS}
+                />
+              </Field>
+
+              <Field label="Is the tank currently overflowing?">
+                <YesNo
+                  value={isOverflowing}
+                  onChange={setIsOverflowing}
+                />
+              </Field>
+
+              <Field label="Preferred time">
+                <Choices
+                  value={preferredTime}
+                  onChange={(v) => setPreferredTime(v as PreferredTime)}
+                  options={PREFERRED_TIME_OPTS}
+                />
+              </Field>
+
+              <Field label="Will someone be on site to open the gate?">
+                <YesNo
+                  value={someoneOnSite}
+                  onChange={setSomeoneOnSite}
+                />
+              </Field>
+            </div>
+          </Section>
         </div>
 
         {/* Right: live quote */}
@@ -264,7 +449,7 @@ export function CustomerNewRequest() {
                 </>
               ) : (
                 <div className="mt-4 text-sm text-white/70">
-                  Pick a region and tank size to see your estimate.
+                  Pick a town and tank size to see your estimate.
                 </div>
               )}
             </div>
@@ -375,6 +560,128 @@ function Row({ label, value }: { label: string; value: string }) {
     <div className="flex justify-between text-white/85">
       <span>{label}</span>
       <span className="font-semibold text-white">{value}</span>
+    </div>
+  )
+}
+
+function Choices<T extends string>({
+  value,
+  onChange,
+  options,
+}: {
+  value: T | ''
+  onChange: (v: T) => void
+  options: { value: T; label: string }[]
+}) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {options.map((o) => {
+        const active = value === o.value
+        return (
+          <button
+            key={o.value}
+            type="button"
+            onClick={() => onChange(o.value)}
+            className={`px-3 py-2 rounded-lg text-sm font-semibold border-2 transition ${
+              active
+                ? 'border-primary bg-primary/10 text-primary'
+                : 'border-charcoal/10 text-charcoal/70 hover:border-charcoal/30'
+            }`}
+          >
+            {o.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+function YesNo({
+  value,
+  onChange,
+}: {
+  value: boolean | null
+  onChange: (v: boolean) => void
+}) {
+  return (
+    <div className="flex gap-2">
+      {[
+        { v: true, label: 'Yes' },
+        { v: false, label: 'No' },
+      ].map((o) => {
+        const active = value === o.v
+        return (
+          <button
+            key={String(o.v)}
+            type="button"
+            onClick={() => onChange(o.v)}
+            className={`flex-1 px-3 py-2 rounded-lg text-sm font-semibold border-2 transition ${
+              active
+                ? 'border-primary bg-primary/10 text-primary'
+                : 'border-charcoal/10 text-charcoal/70 hover:border-charcoal/30'
+            }`}
+          >
+            {o.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+function PhotoField({
+  label,
+  hint,
+  file,
+  onFile,
+}: {
+  label: string
+  hint?: string
+  file: File | null
+  onFile: (f: File | null) => void
+}) {
+  const previewUrl = file ? URL.createObjectURL(file) : null
+  return (
+    <div>
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-semibold text-charcoal/80">{label}</span>
+        {hint && (
+          <span className="text-[10px] uppercase text-charcoal/50">{hint}</span>
+        )}
+      </div>
+      <div className="mt-1.5 flex items-start gap-3">
+        <label className="flex-1 cursor-pointer rounded-xl border-2 border-dashed border-charcoal/20 hover:border-primary/50 px-4 py-6 text-center text-sm text-charcoal/60 transition block">
+          <input
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={(e) => onFile(e.target.files?.[0] ?? null)}
+          />
+          {file ? (
+            <span className="font-semibold text-primary">📷 {file.name}</span>
+          ) : (
+            <span>📷 Tap to take photo or upload</span>
+          )}
+        </label>
+        {previewUrl && (
+          <div className="relative">
+            <img
+              src={previewUrl}
+              alt="preview"
+              className="w-20 h-20 object-cover rounded-lg border border-charcoal/10"
+            />
+            <button
+              type="button"
+              onClick={() => onFile(null)}
+              className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-red-600 text-white text-xs grid place-items-center"
+              aria-label="Remove"
+            >
+              ×
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
