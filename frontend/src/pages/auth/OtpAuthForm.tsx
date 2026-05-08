@@ -17,6 +17,17 @@ function rolePath(role: Role): string {
   return `/${role}`
 }
 
+function normalizeGhPhone(raw: string): string {
+  let digits = raw.replace(/\D/g, '')
+  if (digits.startsWith('233')) digits = digits.slice(3)
+  else if (digits.startsWith('0')) digits = digits.slice(1)
+  return '+233' + digits.slice(0, 9)
+}
+
+function isValidGhPhone(value: string): boolean {
+  return /^\+233\d{9}$/.test(value)
+}
+
 interface OtpAuthFormProps {
   mode: 'login' | 'signup'
 }
@@ -145,6 +156,15 @@ export function OtpAuthForm({ mode }: OtpAuthFormProps) {
           className="space-y-5"
           onSubmit={(e) => {
             e.preventDefault()
+            if (!isValidGhPhone(phone)) {
+              setError('Enter a valid Ghana phone number — 9 digits after +233.')
+              return
+            }
+            if (channel === 'email' && !email) {
+              setError('Enter an email address.')
+              return
+            }
+            setError(null)
             requestMut.mutate()
           }}
         >
@@ -176,11 +196,14 @@ export function OtpAuthForm({ mode }: OtpAuthFormProps) {
               type="tel"
               required
               value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              onChange={(e) => setPhone(normalizeGhPhone(e.target.value))}
               placeholder="+233 24 123 4567"
               className="input text-lg"
               autoFocus
             />
+            <p className="mt-1 text-xs text-charcoal/50">
+              9 digits after +233 (e.g. 0557782728 → +233557782728).
+            </p>
           </Field>
 
           <Field label="Send code via">
@@ -238,7 +261,7 @@ export function OtpAuthForm({ mode }: OtpAuthFormProps) {
                   className="input"
                 />
               </Field>
-              <Field label="Region">
+              <Field label="Town / City">
                 <select
                   value={regionId ?? ''}
                   onChange={(e) =>
@@ -246,7 +269,7 @@ export function OtpAuthForm({ mode }: OtpAuthFormProps) {
                   }
                   className="input"
                 >
-                  <option value="">Select your region</option>
+                  <option value="">Select your town / city</option>
                   {regions.data?.map((r) => (
                     <option key={r.id} value={r.id}>
                       {r.name}
@@ -259,8 +282,8 @@ export function OtpAuthForm({ mode }: OtpAuthFormProps) {
 
           <button
             type="submit"
-            disabled={requestMut.isPending}
-            className="w-full bg-primary text-white font-bold py-3.5 rounded-lg hover:bg-primary/90 disabled:opacity-60 transition shadow-sm"
+            disabled={requestMut.isPending || !isValidGhPhone(phone)}
+            className="w-full bg-primary text-white font-bold py-3.5 rounded-lg hover:bg-primary/90 disabled:opacity-60 disabled:cursor-not-allowed transition shadow-sm"
           >
             {requestMut.isPending ? 'Sending code…' : 'Send code →'}
           </button>
