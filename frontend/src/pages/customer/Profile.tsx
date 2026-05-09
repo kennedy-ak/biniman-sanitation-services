@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchRegions, requestEmailOtp, updateProfile, verifyEmailOtp } from '@/api/auth'
 import { fetchMyRequests } from '@/api/requests'
 import { useAuth } from '@/store/auth'
+import { PasswordSecurityCard } from '@/components/auth/PasswordSecurityCard'
 
 function initials(name: string, fallback: string) {
   const src = name || fallback
@@ -80,6 +81,9 @@ export function CustomerProfile() {
 
       {/* Email verification card */}
       <EmailVerificationCard />
+
+      {/* Password / security */}
+      <PasswordSecurityCard />
 
       {/* Edit form */}
       <form

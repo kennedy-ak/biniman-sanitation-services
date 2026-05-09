@@ -131,6 +131,8 @@ REST_FRAMEWORK = {
         "email_otp_request": "5/hour",
         "email_otp_verify": "10/hour",
         "admin_user_create": "30/hour",
+        "password_login": "20/hour",
+        "password_set": "10/hour",
     },
 }
 

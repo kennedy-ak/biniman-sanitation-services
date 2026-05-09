@@ -25,8 +25,25 @@ export async function verifyOtp(payload: {
   role?: Role
   full_name?: string
   region_id?: number
+  password?: string
 }) {
   const { data } = await api.post<VerifyResponse>('/auth/otp/verify/', payload)
+  return data
+}
+
+export async function passwordLogin(phone: string, password: string) {
+  const { data } = await api.post<{ user: User; tokens: AuthTokens }>(
+    '/auth/password/login/',
+    { phone, password },
+  )
+  return data
+}
+
+export async function setPassword(payload: {
+  current_password?: string
+  new_password: string
+}) {
+  const { data } = await api.post<{ detail: string }>('/auth/password/set/', payload)
   return data
 }
 

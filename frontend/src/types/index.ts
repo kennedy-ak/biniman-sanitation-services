@@ -18,6 +18,7 @@ export interface User {
   is_email_verified: boolean
   is_active: boolean
   created_at: string
+  has_password: boolean
 }
 
 export interface AuthTokens {
