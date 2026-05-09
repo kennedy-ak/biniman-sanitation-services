@@ -1,7 +1,9 @@
+from django.db import IntegrityError, transaction
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import api_view, parser_classes, permission_classes
+from rest_framework.exceptions import ValidationError
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -20,14 +22,48 @@ from drivers.services.storage import upload_document
 @api_view(["POST"])
 @permission_classes([IsAuthenticated, IsDriver])
 def onboard(request):
-    """Create or update the driver profile for the requesting user."""
+    """Create or update the driver profile for the requesting user.
+
+    Status is set to PENDING only on first creation. Re-submitting an existing
+    profile keeps the current status (so an APPROVED driver editing their
+    base_fee or MoMo number doesn't get bumped back to review).
+    """
     serializer = DriverOnboardSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
+    data = serializer.validated_data
 
-    driver, _ = Driver.objects.update_or_create(
-        user=request.user,
-        defaults={**serializer.validated_data, "status": DriverStatus.PENDING},
-    )
+    new_reg = (data.get("vehicle_reg") or "").strip()
+    if new_reg:
+        clash = Driver.objects.filter(vehicle_reg__iexact=new_reg).exclude(
+            user=request.user
+        )
+        if clash.exists():
+            raise ValidationError(
+                {"vehicle_reg": "This vehicle is already registered to another driver."}
+            )
+
+    try:
+        with transaction.atomic():
+            existing = Driver.objects.filter(user=request.user).first()
+            if existing is None:
+                driver = Driver.objects.create(
+                    user=request.user,
+                    status=DriverStatus.PENDING,
+                    **data,
+                )
+            else:
+                for k, v in data.items():
+                    setattr(existing, k, v)
+                existing.save(update_fields=list(data.keys()))
+                driver = existing
+    except IntegrityError as exc:
+        msg = str(exc).lower()
+        if "vehicle_reg" in msg:
+            raise ValidationError(
+                {"vehicle_reg": "This vehicle is already registered to another driver."}
+            )
+        raise ValidationError("Could not save profile — duplicate or constraint violation.")
+
     return Response(DriverSerializer(driver).data, status=status.HTTP_201_CREATED)
 
 
