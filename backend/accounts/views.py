@@ -11,6 +11,8 @@ from liquidgo.throttles import (
     EmailOTPVerifyThrottle,
     OTPRequestThrottle,
     OTPVerifyThrottle,
+    PasswordLoginThrottle,
+    PasswordSetThrottle,
 )
 from rest_framework_simplejwt.tokens import RefreshToken
 
@@ -20,6 +22,8 @@ from accounts.serializers import (
     EmailOTPVerifySerializer,
     OTPRequestSerializer,
     OTPVerifySerializer,
+    PasswordLoginSerializer,
+    PasswordSetSerializer,
     ProfileUpdateSerializer,
     RegionSerializer,
     UserSerializer,
@@ -73,9 +77,16 @@ def otp_verify(request):
         )
     created = False
     if user is None:
+        password = data.get("password") or ""
+        if not password:
+            return Response(
+                {"password": ["A password is required to create an account."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         role = data.get("role") or Role.CUSTOMER
         user = User.objects.create_user(
             phone=data["phone"],
+            password=password,
             role=role,
             full_name=data.get("full_name", ""),
             region_id=data.get("region_id"),
@@ -95,6 +106,52 @@ def otp_verify(request):
         },
         status=status.HTTP_200_OK,
     )
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+@throttle_classes([PasswordLoginThrottle])
+def password_login(request):
+    serializer = PasswordLoginSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    data = serializer.validated_data
+
+    user = User.objects.filter(phone=data["phone"]).first()
+    invalid = Response(
+        {"detail": "Invalid phone or password."},
+        status=status.HTTP_400_BAD_REQUEST,
+    )
+    if user is None or not user.has_usable_password():
+        return invalid
+    if not user.check_password(data["password"]):
+        return invalid
+    if not user.is_active:
+        return Response(
+            {
+                "detail": (
+                    "Your account has been suspended. Please contact support at "
+                    "support@biniman.com for assistance."
+                )
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    return Response(
+        {"user": UserSerializer(user).data, "tokens": _tokens_for(user)},
+        status=status.HTTP_200_OK,
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+@throttle_classes([PasswordSetThrottle])
+def password_set(request):
+    serializer = PasswordSetSerializer(data=request.data, context={"request": request})
+    serializer.is_valid(raise_exception=True)
+    user = request.user
+    user.set_password(serializer.validated_data["new_password"])
+    user.save(update_fields=["password"])
+    return Response({"detail": "Password updated."})
 
 
 @api_view(["GET"])

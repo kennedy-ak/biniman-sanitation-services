@@ -36,3 +36,11 @@ class EmailOTPVerifyThrottle(UserRateThrottle):
 
 class AdminUserCreateThrottle(UserRateThrottle):
     scope = "admin_user_create"
+
+
+class PasswordLoginThrottle(AnonRateThrottle):
+    scope = "password_login"
+
+
+class PasswordSetThrottle(UserRateThrottle):
+    scope = "password_set"

@@ -44,6 +44,8 @@ export function OtpAuthForm({ mode }: OtpAuthFormProps) {
   const [regionId, setRegionId] = useState<number | undefined>(undefined)
   const [channel, setChannel] = useState<'sms' | 'email'>('sms')
   const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [showPw, setShowPw] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const codeRefs = useRef<(HTMLInputElement | null)[]>([])
   const [resendCooldown, setResendCooldown] = useState(0)
@@ -109,15 +111,21 @@ export function OtpAuthForm({ mode }: OtpAuthFormProps) {
         role,
         full_name: fullName,
         region_id: regionId,
+        password: mode === 'signup' ? password : undefined,
       }),
     onSuccess: (data) => {
       setSession(data.user, data.tokens)
       navigate(rolePath(data.user.role), { replace: true })
     },
-    onError: (err: Error & { response?: { data?: { detail?: string; code?: string[] } } }) => {
+    onError: (
+      err: Error & {
+        response?: { data?: { detail?: string; code?: string[]; password?: string[] } }
+      },
+    ) => {
       setError(
         err.response?.data?.detail ||
           err.response?.data?.code?.[0] ||
+          err.response?.data?.password?.[0] ||
           'Verification failed.',
       )
     },
@@ -162,6 +170,10 @@ export function OtpAuthForm({ mode }: OtpAuthFormProps) {
             }
             if (channel === 'email' && !email) {
               setError('Enter an email address.')
+              return
+            }
+            if (mode === 'signup' && password.length < 8) {
+              setError('Choose a password with at least 8 characters.')
               return
             }
             setError(null)
@@ -277,12 +289,40 @@ export function OtpAuthForm({ mode }: OtpAuthFormProps) {
                   ))}
                 </select>
               </Field>
+              <Field label="Create a password">
+                <div className="relative">
+                  <input
+                    type={showPw ? 'text' : 'password'}
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="At least 8 characters"
+                    className="input pr-16"
+                    autoComplete="new-password"
+                    minLength={8}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPw((v) => !v)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-semibold text-charcoal/60 hover:text-charcoal px-2 py-1"
+                  >
+                    {showPw ? 'Hide' : 'Show'}
+                  </button>
+                </div>
+                <p className="mt-1 text-xs text-charcoal/50">
+                  You'll use this to sign in faster next time.
+                </p>
+              </Field>
             </>
           )}
 
           <button
             type="submit"
-            disabled={requestMut.isPending || !isValidGhPhone(phone)}
+            disabled={
+              requestMut.isPending ||
+              !isValidGhPhone(phone) ||
+              (mode === 'signup' && password.length < 8)
+            }
             className="w-full bg-primary text-white font-bold py-3.5 rounded-lg hover:bg-primary/90 disabled:opacity-60 disabled:cursor-not-allowed transition shadow-sm"
           >
             {requestMut.isPending ? 'Sending code…' : 'Send code →'}
