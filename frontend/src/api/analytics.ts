@@ -130,6 +130,7 @@ export interface UserCreatePayload {
   email?: string | null
   role: Role
   region_id?: number | null
+  password?: string
   // driver-only (optional)
   vehicle_reg?: string
   vehicle_type?: 'small_tanker' | 'medium_tanker' | 'large_tanker'
