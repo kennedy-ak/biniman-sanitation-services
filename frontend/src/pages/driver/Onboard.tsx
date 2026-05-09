@@ -62,7 +62,8 @@ export function DriverOnboard() {
       setProfileSaved(true)
       showToast({ kind: 'success', msg: 'Profile saved.' })
     },
-    onError: () => showToast({ kind: 'error', msg: 'Failed to save profile.' }),
+    onError: (err: unknown) =>
+      showToast({ kind: 'error', msg: serverError(err, 'Failed to save profile.') }),
   })
 
   const uploadMut = useMutation({
@@ -72,7 +73,8 @@ export function DriverOnboard() {
       qc.invalidateQueries({ queryKey: ['driver', 'me'] })
       showToast({ kind: 'success', msg: `${labelFor(vars.docType)} uploaded.` })
     },
-    onError: () => showToast({ kind: 'error', msg: 'Upload failed. Try again.' }),
+    onError: (err: unknown) =>
+      showToast({ kind: 'error', msg: serverError(err, 'Upload failed. Try again.') }),
   })
 
   const existing = driver.data
@@ -544,6 +546,30 @@ function ReviewStep({
 
 function labelFor(t: DocumentType) {
   return DOC_TYPES.find((d) => d.value === t)?.label ?? t
+}
+
+function serverError(err: unknown, fallback: string): string {
+  const resp = (err as { response?: { status?: number; data?: unknown } })?.response
+  const data = resp?.data
+  if (typeof data === 'string') {
+    if (/<html|<!doctype/i.test(data)) {
+      return resp?.status === 500
+        ? 'Server error (500). Check the backend logs.'
+        : `HTTP ${resp?.status ?? '?'} — ${fallback}`
+    }
+    return data
+  }
+  if (data && typeof data === 'object') {
+    const obj = data as Record<string, unknown>
+    if (typeof obj.detail === 'string') return obj.detail
+    const parts: string[] = []
+    for (const [k, v] of Object.entries(obj)) {
+      const flat = Array.isArray(v) ? v.join(' ') : typeof v === 'string' ? v : ''
+      if (flat) parts.push(k === 'non_field_errors' ? flat : `${k}: ${flat}`)
+    }
+    if (parts.length) return parts.join(' • ')
+  }
+  return fallback
 }
 
 function Field({
