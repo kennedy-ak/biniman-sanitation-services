@@ -43,7 +43,7 @@ export function DriverDashboard() {
   const qc = useQueryClient()
   const driver = useQuery({ queryKey: ['driver', 'me'], queryFn: fetchMyDriver, retry: false })
   const isApproved = driver.data?.status === 'approved'
-  const [busy, setBusy] = useState(false)
+  const [toggleError, setToggleError] = useState<string | null>(null)
 
   const offerQuery = useQuery({
     queryKey: ['driver', 'offer'],
@@ -91,21 +91,27 @@ export function DriverDashboard() {
       let lat: number | undefined
       let lng: number | undefined
       if (turnOn && navigator.geolocation) {
-        await new Promise<void>((resolve) => {
-          navigator.geolocation.getCurrentPosition(
-            (pos) => {
-              lat = pos.coords.latitude
-              lng = pos.coords.longitude
-              resolve()
-            },
-            () => resolve(),
-            { timeout: 5000 },
-          )
-        })
+        // Hard timeout so a stuck permission prompt can't block the toggle.
+        await Promise.race<void>([
+          new Promise<void>((resolve) => {
+            navigator.geolocation.getCurrentPosition(
+              (pos) => {
+                lat = pos.coords.latitude
+                lng = pos.coords.longitude
+                resolve()
+              },
+              () => resolve(),
+              { timeout: 5000, enableHighAccuracy: true },
+            )
+          }),
+          new Promise<void>((resolve) => setTimeout(resolve, 6000)),
+        ])
       }
       return setDriverOnline({ is_online: turnOn, lat, lng })
     },
+    onMutate: () => setToggleError(null),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['driver', 'me'] }),
+    onError: (err: unknown) => setToggleError(toggleErrorMsg(err)),
   })
 
   const acceptMut = useMutation({
@@ -165,22 +171,36 @@ export function DriverDashboard() {
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-extrabold">Driver dashboard</h1>
         <button
-          disabled={onlineMut.isPending || busy}
-          onClick={() => {
-            setBusy(true)
-            onlineMut.mutate(!driver.data.is_online, {
-              onSettled: () => setBusy(false),
-            })
-          }}
-          className={`px-4 py-2 rounded-md font-semibold transition ${
+          type="button"
+          disabled={onlineMut.isPending}
+          onClick={() => onlineMut.mutate(!driver.data!.is_online)}
+          className={`px-4 py-2 rounded-md font-semibold transition disabled:opacity-60 disabled:cursor-wait ${
             driver.data.is_online
               ? 'bg-green-600 text-white hover:bg-green-700'
               : 'bg-charcoal/10 text-charcoal hover:bg-charcoal/20'
           }`}
         >
-          {driver.data.is_online ? '● Online — tap to go offline' : '○ Tap to go online'}
+          {onlineMut.isPending
+            ? driver.data.is_online
+              ? 'Going offline…'
+              : 'Going online…'
+            : driver.data.is_online
+              ? '● Online — tap to go offline'
+              : '○ Tap to go online'}
         </button>
       </div>
+      {toggleError && (
+        <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 flex items-start justify-between gap-3">
+          <span>{toggleError}</span>
+          <button
+            type="button"
+            onClick={() => setToggleError(null)}
+            className="text-red-700/70 hover:text-red-900 text-xs font-bold"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {active && (
         <section className="mt-6 card border-primary/40 bg-primary/5">
@@ -325,6 +345,35 @@ export function DriverDashboard() {
       )}
     </div>
   )
+}
+
+function toggleErrorMsg(err: unknown): string {
+  const resp = (err as { response?: { status?: number; data?: unknown } })?.response
+  const status = resp?.status
+  const data = resp?.data
+  if (status === 403) {
+    return 'Your driver account is not approved yet, so you cannot go online.'
+  }
+  if (typeof data === 'string') {
+    if (/<html|<!doctype/i.test(data)) {
+      return status === 500
+        ? 'Server error (500). Try again or check the backend logs.'
+        : `HTTP ${status ?? '?'} — could not toggle online status.`
+    }
+    return data
+  }
+  if (data && typeof data === 'object') {
+    const obj = data as Record<string, unknown>
+    if (typeof obj.detail === 'string') return obj.detail
+    const parts: string[] = []
+    for (const [k, v] of Object.entries(obj)) {
+      const flat = Array.isArray(v) ? v.join(' ') : typeof v === 'string' ? v : ''
+      if (flat) parts.push(k === 'non_field_errors' ? flat : `${k}: ${flat}`)
+    }
+    if (parts.length) return parts.join(' • ')
+  }
+  if (!navigator.onLine) return 'You appear to be offline. Check your connection.'
+  return 'Could not toggle online status. Try again.'
 }
 
 const GATE_FIT_LABEL: Record<string, string> = {
