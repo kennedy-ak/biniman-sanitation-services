@@ -46,5 +46,12 @@ def send_email(to_email: str, subject: str, html: str, text: str = "") -> dict:
         resp.raise_for_status()
         return resp.json()
     except requests.RequestException as exc:
-        logger.exception("Resend send failed: %s", exc)
-        return {"error": str(exc)}
+        body = ""
+        resp_obj = getattr(exc, "response", None)
+        if resp_obj is not None:
+            body = (resp_obj.text or "")[:500]
+        logger.error(
+            "Resend send failed (to=%s, from=%s): %s | body=%s",
+            to_email, sender, exc, body,
+        )
+        return {"error": str(exc), "body": body}

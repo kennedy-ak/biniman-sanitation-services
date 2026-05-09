@@ -10,6 +10,7 @@ urlpatterns = [
     path("top-drivers/", views.top_drivers, name="top-drivers"),
     path("users/", views.list_users, name="list-users"),
     path("users/create/", views.user_create, name="user-create"),
+    path("users/bulk-delete/", views.user_bulk_delete, name="user-bulk-delete"),
     path("users/<int:user_id>/", views.user_detail, name="user-detail"),
     path("users/<int:user_id>/update/", views.user_update, name="user-update"),
     path("users/<int:user_id>/active/", views.user_set_active, name="user-active"),
