@@ -176,3 +176,17 @@ export async function deleteAdminUser(userId: number) {
   const { data } = await api.delete(`/analytics/users/${userId}/delete/`)
   return data as { deleted: boolean }
 }
+
+export interface BulkDeleteResult {
+  requested: number
+  deleted: number
+  skipped_self: number
+  not_found: number[]
+}
+
+export async function bulkDeleteAdminUsers(ids: number[]) {
+  const { data } = await api.post<BulkDeleteResult>('/analytics/users/bulk-delete/', {
+    ids,
+  })
+  return data
+}

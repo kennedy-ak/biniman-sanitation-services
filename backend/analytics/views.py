@@ -529,6 +529,54 @@ def user_delete(request, user_id: int):
     return Response({"deleted": True})
 
 
+@api_view(["POST"])
+@permission_classes([IsAuthenticated, IsAdmin])
+def user_bulk_delete(request):
+    """Admin: hard-delete many users at once. Body: {"ids": [int, ...]}.
+    Skips the caller's own id and any ids that don't exist. Cascades to
+    each user's requests/driver profile.
+    """
+    raw_ids = request.data.get("ids")
+    if not isinstance(raw_ids, list) or not raw_ids:
+        raise ValidationError({"ids": "Provide a non-empty list of user ids."})
+
+    ids: list[int] = []
+    for v in raw_ids:
+        try:
+            ids.append(int(v))
+        except (TypeError, ValueError):
+            raise ValidationError({"ids": f"Invalid id: {v!r}."})
+
+    if len(ids) > 500:
+        raise ValidationError({"ids": "Limit bulk delete to 500 users at a time."})
+
+    requested = set(ids)
+    skipped_self = 1 if request.user.id in requested else 0
+    requested.discard(request.user.id)
+
+    qs = User.objects.filter(pk__in=requested)
+    found_ids = list(qs.values_list("id", flat=True))
+    not_found = sorted(requested - set(found_ids))
+
+    deleted_count = len(found_ids)
+    if found_ids:
+        with transaction.atomic():
+            qs.delete()
+
+    logger.info(
+        "admin_user_bulk_delete actor=%s requested=%d deleted=%d skipped_self=%d not_found=%d",
+        request.user.id, len(ids), deleted_count, skipped_self, len(not_found),
+    )
+    return Response(
+        {
+            "requested": len(ids),
+            "deleted": deleted_count,
+            "skipped_self": skipped_self,
+            "not_found": not_found,
+        }
+    )
+
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def user_detail(request, user_id: int):

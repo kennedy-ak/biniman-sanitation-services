@@ -1,13 +1,16 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  bulkDeleteAdminUsers,
   createAdminUser,
   fetchAdminUsers,
+  type BulkDeleteResult,
   type UserCreatePayload,
   type UserListRow,
 } from '@/api/analytics'
 import { fetchRegions } from '@/api/auth'
+import { useAuth } from '@/store/auth'
 import { EmptyState, PageHeader, SegmentedTabs } from '@/components/admin/PageHeader'
 import type { Role } from '@/types'
 
@@ -32,11 +35,16 @@ function initials(name: string, fallback: string) {
 }
 
 export function AdminUsers({ initialRole = 'all' }: { initialRole?: RoleFilter } = {}) {
+  const qc = useQueryClient()
+  const me = useAuth((s) => s.user)
   const [role, setRole] = useState<RoleFilter>(initialRole)
   const [q, setQ] = useState('')
   const [showCreate, setShowCreate] = useState(false)
   const [showCreateDriver, setShowCreateDriver] = useState(false)
   const [createdMsg, setCreatedMsg] = useState<string | null>(null)
+  const [selected, setSelected] = useState<Set<number>>(new Set())
+  const [confirmBulk, setConfirmBulk] = useState(false)
+  const [bulkResult, setBulkResult] = useState<BulkDeleteResult | null>(null)
   const driverContext = initialRole === 'driver'
 
   const list = useQuery({
@@ -49,6 +57,54 @@ export function AdminUsers({ initialRole = 'all' }: { initialRole?: RoleFilter }
   })
 
   const users = list.data ?? []
+  const selectableIds = useMemo(
+    () => users.filter((u) => u.id !== me?.id).map((u) => u.id),
+    [users, me?.id],
+  )
+
+  // Drop selections that no longer appear in the current list (filter/role change).
+  useEffect(() => {
+    const visible = new Set(users.map((u) => u.id))
+    setSelected((prev) => {
+      const next = new Set<number>()
+      prev.forEach((id) => {
+        if (visible.has(id)) next.add(id)
+      })
+      return next.size === prev.size ? prev : next
+    })
+  }, [users])
+
+  const allSelected =
+    selectableIds.length > 0 && selectableIds.every((id) => selected.has(id))
+  const someSelected = selected.size > 0 && !allSelected
+
+  const toggleAll = () => {
+    if (allSelected) {
+      setSelected(new Set())
+    } else {
+      setSelected(new Set(selectableIds))
+    }
+  }
+
+  const toggleOne = (id: number) => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const bulkDelete = useMutation({
+    mutationFn: () => bulkDeleteAdminUsers(Array.from(selected)),
+    onSuccess: (data) => {
+      setBulkResult(data)
+      setSelected(new Set())
+      setConfirmBulk(false)
+      qc.invalidateQueries({ queryKey: ['admin', 'users'] })
+      setTimeout(() => setBulkResult(null), 8000)
+    },
+  })
 
   return (
     <div className="space-y-6">
@@ -123,6 +179,56 @@ export function AdminUsers({ initialRole = 'all' }: { initialRole?: RoleFilter }
         </div>
       )}
 
+      {bulkResult && (
+        <div className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-800">
+          Deleted {bulkResult.deleted} {bulkResult.deleted === 1 ? 'user' : 'users'}.
+          {bulkResult.skipped_self > 0 && ' Skipped your own account.'}
+          {bulkResult.not_found.length > 0 &&
+            ` ${bulkResult.not_found.length} not found.`}
+        </div>
+      )}
+
+      {selected.size > 0 && (
+        <div className="sticky top-2 z-20 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm shadow-sm">
+          <div className="text-red-800">
+            <span className="font-semibold">{selected.size}</span> selected
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setSelected(new Set())}
+              className="text-charcoal/70 hover:text-charcoal text-sm"
+            >
+              Clear
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirmBulk(true)}
+              className="bg-red-600 text-white px-3 py-1.5 rounded-md text-sm font-semibold hover:bg-red-700 transition"
+            >
+              Delete selected
+            </button>
+          </div>
+        </div>
+      )}
+
+      {confirmBulk && (
+        <ConfirmBulkDeleteModal
+          count={selected.size}
+          isPending={bulkDelete.isPending}
+          error={
+            bulkDelete.isError
+              ? extractError(bulkDelete.error, 'Bulk delete failed.')
+              : null
+          }
+          onCancel={() => {
+            setConfirmBulk(false)
+            bulkDelete.reset()
+          }}
+          onConfirm={() => bulkDelete.mutate()}
+        />
+      )}
+
       <div className="flex flex-wrap gap-3 items-center justify-between">
         <SegmentedTabs<RoleFilter>
           value={role}
@@ -153,10 +259,23 @@ export function AdminUsers({ initialRole = 'all' }: { initialRole?: RoleFilter }
         />
       ) : (
         <div className="bg-white border border-charcoal/5 rounded-2xl shadow-sm overflow-x-auto">
-          <table className="w-full min-w-[760px] text-sm">
+          <table className="w-full min-w-[800px] text-sm">
             <thead className="text-left text-[10px] uppercase tracking-wider text-charcoal/50 bg-charcoal/[0.02]">
               <tr>
-                <th className="py-3 pl-6">User</th>
+                <th className="py-3 pl-6 w-10">
+                  <input
+                    type="checkbox"
+                    aria-label="Select all"
+                    checked={allSelected}
+                    ref={(el) => {
+                      if (el) el.indeterminate = someSelected
+                    }}
+                    onChange={toggleAll}
+                    disabled={selectableIds.length === 0}
+                    className="h-4 w-4 cursor-pointer accent-red-600"
+                  />
+                </th>
+                <th>User</th>
                 <th>Role</th>
                 <th>Town / City</th>
                 <th>Trips</th>
@@ -166,7 +285,13 @@ export function AdminUsers({ initialRole = 'all' }: { initialRole?: RoleFilter }
             </thead>
             <tbody>
               {users.map((u) => (
-                <UserRow key={u.id} u={u} />
+                <UserRow
+                  key={u.id}
+                  u={u}
+                  selected={selected.has(u.id)}
+                  onToggle={() => toggleOne(u.id)}
+                  isSelf={u.id === me?.id}
+                />
               ))}
             </tbody>
           </table>
@@ -176,7 +301,93 @@ export function AdminUsers({ initialRole = 'all' }: { initialRole?: RoleFilter }
   )
 }
 
-function UserRow({ u }: { u: UserListRow }) {
+function ConfirmBulkDeleteModal({
+  count,
+  isPending,
+  error,
+  onCancel,
+  onConfirm,
+}: {
+  count: number
+  isPending: boolean
+  error: string | null
+  onCancel: () => void
+  onConfirm: () => void
+}) {
+  const [confirmText, setConfirmText] = useState('')
+  const enabled = confirmText.trim().toUpperCase() === 'DELETE' && !isPending
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onClick={onCancel}
+    >
+      <div
+        className="bg-white rounded-2xl shadow-xl w-full max-w-md"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="p-6 space-y-4">
+          <div>
+            <h2 className="text-xl font-bold text-charcoal">
+              Delete {count} {count === 1 ? 'user' : 'users'}?
+            </h2>
+            <p className="text-sm text-charcoal/70 mt-1">
+              This is permanent. Their requests, driver profile, payments and
+              ratings will be removed too. There is no undo.
+            </p>
+          </div>
+          <label className="block">
+            <span className="text-xs font-semibold uppercase tracking-wider text-charcoal/60">
+              Type <span className="font-mono text-red-700">DELETE</span> to confirm
+            </span>
+            <input
+              autoFocus
+              className="input mt-1"
+              value={confirmText}
+              onChange={(e) => setConfirmText(e.target.value)}
+              placeholder="DELETE"
+            />
+          </label>
+          {error && (
+            <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {error}
+            </div>
+          )}
+          <div className="flex items-center justify-end gap-3 border-t border-charcoal/10 pt-4">
+            <button
+              type="button"
+              onClick={onCancel}
+              disabled={isPending}
+              className="px-4 py-2 rounded-md text-sm font-medium text-charcoal/70 hover:text-charcoal disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={onConfirm}
+              disabled={!enabled}
+              className="bg-red-600 text-white px-5 py-2 rounded-md text-sm font-semibold hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+            >
+              {isPending ? 'Deleting…' : `Delete ${count}`}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function UserRow({
+  u,
+  selected,
+  onToggle,
+  isSelf,
+}: {
+  u: UserListRow
+  selected: boolean
+  onToggle: () => void
+  isSelf: boolean
+}) {
   const meta = ROLE_META[u.role] ?? ROLE_META.customer
   const activity =
     u.role === 'driver'
@@ -184,8 +395,23 @@ function UserRow({ u }: { u: UserListRow }) {
       : `Spent GHS ${u.stats.spent ?? '0'}`
 
   return (
-    <tr className="border-t border-charcoal/5 hover:bg-charcoal/[0.02] transition">
-      <td className="py-3 pl-6">
+    <tr
+      className={`border-t border-charcoal/5 hover:bg-charcoal/[0.02] transition ${
+        selected ? 'bg-red-50/40' : ''
+      }`}
+    >
+      <td className="py-3 pl-6 w-10">
+        <input
+          type="checkbox"
+          aria-label={isSelf ? 'Cannot select your own account' : `Select ${u.full_name || u.phone}`}
+          checked={selected}
+          onChange={onToggle}
+          disabled={isSelf}
+          title={isSelf ? "You can't delete your own account" : ''}
+          className="h-4 w-4 cursor-pointer accent-red-600 disabled:cursor-not-allowed disabled:opacity-40"
+        />
+      </td>
+      <td>
         <Link to={`/admin/users/${u.id}`} className="flex items-center gap-3 min-w-0">
           <div className="w-9 h-9 rounded-full bg-primary text-white grid place-items-center font-bold text-xs flex-shrink-0">
             {initials(u.full_name, u.phone)}
