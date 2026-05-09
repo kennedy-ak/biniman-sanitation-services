@@ -188,29 +188,6 @@ export function AdminUsers({ initialRole = 'all' }: { initialRole?: RoleFilter }
         </div>
       )}
 
-      {selected.size > 0 && (
-        <div className="sticky top-2 z-20 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm shadow-sm">
-          <div className="text-red-800">
-            <span className="font-semibold">{selected.size}</span> selected
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setSelected(new Set())}
-              className="text-charcoal/70 hover:text-charcoal text-sm"
-            >
-              Clear
-            </button>
-            <button
-              type="button"
-              onClick={() => setConfirmBulk(true)}
-              className="bg-red-600 text-white px-3 py-1.5 rounded-md text-sm font-semibold hover:bg-red-700 transition"
-            >
-              Delete selected
-            </button>
-          </div>
-        </div>
-      )}
 
       {confirmBulk && (
         <ConfirmBulkDeleteModal
@@ -241,12 +218,32 @@ export function AdminUsers({ initialRole = 'all' }: { initialRole?: RoleFilter }
             { value: 'admin', label: 'Admins' },
           ]}
         />
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Search phone, name, or email…"
-          className="input max-w-xs"
-        />
+        {selected.size > 0 ? (
+          <div className="inline-flex items-center gap-2 rounded-md border border-red-200 bg-red-50 pl-3 pr-1.5 py-1 text-sm">
+            <span className="text-red-800 font-semibold">{selected.size} selected</span>
+            <button
+              type="button"
+              onClick={() => setSelected(new Set())}
+              className="text-charcoal/60 hover:text-charcoal text-xs px-1.5"
+            >
+              Clear
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirmBulk(true)}
+              className="bg-red-600 text-white px-3 py-1 rounded text-xs font-semibold hover:bg-red-700 transition"
+            >
+              Delete
+            </button>
+          </div>
+        ) : (
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search phone, name, or email…"
+            className="input max-w-xs"
+          />
+        )}
       </div>
 
       {list.isLoading ? (
@@ -452,9 +449,18 @@ function UserRow({
 type NonDriverRole = Exclude<Role, 'driver'>
 
 function extractError(e: unknown, fallback: string) {
-  const detail = (e as { response?: { data?: unknown } })?.response?.data
-  if (typeof detail === 'string') return detail
-  if (detail) {
+  const resp = (e as { response?: { status?: number; data?: unknown } })?.response
+  const detail = resp?.data
+  if (typeof detail === 'string') {
+    // Server returned HTML (Django 500 page) — surface a clean status line.
+    if (/<html|<!doctype/i.test(detail)) {
+      return resp?.status === 500
+        ? 'Server error (500). Check backend logs for the traceback.'
+        : `HTTP ${resp?.status ?? '?'} — ${fallback}`
+    }
+    return detail
+  }
+  if (detail && typeof detail === 'object') {
     return Object.entries(detail as Record<string, unknown>)
       .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`)
       .join(' • ')

@@ -15,6 +15,8 @@ from rest_framework.response import Response
 
 from django.db import IntegrityError, transaction
 
+from django.db.models import Q
+
 from accounts.models import PHONE_RE, Region, Role, User
 from drivers.models import Driver, DriverStatus, VehicleType
 from drivers.permissions import IsAdmin
@@ -29,6 +31,42 @@ from payments.services.orchestrator import (
 from ratings.services import aggregate_for_user
 from requests_app.models import RequestStatus, ServiceRequest
 from requests_app.serializers import ServiceRequestSerializer
+
+
+def _purge_users(user_ids: list[int]) -> int:
+    """Hard-delete users plus all rows that PROTECT them.
+
+    PROTECT chain on User: ServiceRequest.customer, Payment.customer.
+    PROTECT chain on ServiceRequest: Payment.request, Payout.request.
+    PROTECT chain on Driver: Payout.driver. Driver itself CASCADE-deletes
+    when its user goes, but the payouts pointing at that driver block it.
+
+    Order: Payouts -> Payments -> ServiceRequests -> Users (cascades to
+    Driver, FleetCompany, EmailOTP, Ratings).
+
+    Returns count of users actually deleted.
+    """
+    if not user_ids:
+        return 0
+
+    with transaction.atomic():
+        sr_ids = list(
+            ServiceRequest.objects.filter(
+                Q(customer_id__in=user_ids) | Q(driver__user_id__in=user_ids)
+            ).values_list("id", flat=True)
+        )
+
+        Payout.objects.filter(
+            Q(request_id__in=sr_ids) | Q(driver__user_id__in=user_ids)
+        ).delete()
+        Payment.objects.filter(
+            Q(request_id__in=sr_ids) | Q(customer_id__in=user_ids)
+        ).delete()
+        if sr_ids:
+            ServiceRequest.objects.filter(id__in=sr_ids).delete()
+
+        User.objects.filter(id__in=user_ids).delete()
+    return len(user_ids)
 
 logger = logging.getLogger(__name__)
 
@@ -521,11 +559,13 @@ def user_set_active(request, user_id: int):
 @api_view(["DELETE"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def user_delete(request, user_id: int):
-    """Admin: hard-delete a user. Use with care — cascades to their requests."""
+    """Admin: hard-delete a user. Cascades through their payouts, payments,
+    service requests, ratings, and driver/fleet profile.
+    """
     u = get_object_or_404(User, pk=user_id)
     if u.id == request.user.id:
         raise ValidationError("You cannot delete your own account.")
-    u.delete()
+    _purge_users([u.id])
     return Response({"deleted": True})
 
 
@@ -558,10 +598,7 @@ def user_bulk_delete(request):
     found_ids = list(qs.values_list("id", flat=True))
     not_found = sorted(requested - set(found_ids))
 
-    deleted_count = len(found_ids)
-    if found_ids:
-        with transaction.atomic():
-            qs.delete()
+    deleted_count = _purge_users(found_ids)
 
     logger.info(
         "admin_user_bulk_delete actor=%s requested=%d deleted=%d skipped_self=%d not_found=%d",
