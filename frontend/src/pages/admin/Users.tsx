@@ -152,7 +152,7 @@ export function AdminUsers({ initialRole = 'all' }: { initialRole?: RoleFilter }
           onClose={() => setShowCreate(false)}
           onCreated={(u) => {
             setCreatedMsg(
-              `Created ${u.full_name || u.phone} (${u.role}). They can sign in via OTP.`,
+              `Created ${u.full_name || u.phone} (${u.role}).`,
             )
             setShowCreate(false)
             setTimeout(() => setCreatedMsg(null), 6000)
@@ -482,6 +482,8 @@ function CreateUserModal({
   const [email, setEmail] = useState('')
   const [role, setRole] = useState<NonDriverRole>('customer')
   const [regionId, setRegionId] = useState<number | undefined>(undefined)
+  const [password, setPassword] = useState('')
+  const [showPw, setShowPw] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const create = useMutation({
@@ -500,12 +502,17 @@ function CreateUserModal({
       setError('Phone must be +233 followed by 9 digits.')
       return
     }
+    if (password && password.length < 8) {
+      setError('Password must be at least 8 characters (or leave blank for OTP-only).')
+      return
+    }
     create.mutate({
       phone,
       full_name: fullName || undefined,
       email: email || undefined,
       role,
       region_id: regionId ?? null,
+      password: password || undefined,
     })
   }
 
@@ -589,6 +596,34 @@ function CreateUserModal({
                 ))}
               </select>
             </label>
+            <label className="block sm:col-span-2">
+              <span className="text-sm font-medium text-charcoal/80">
+                Initial password{' '}
+                <span className="text-charcoal/50 font-normal">(optional)</span>
+              </span>
+              <div className="relative mt-1">
+                <input
+                  type={showPw ? 'text' : 'password'}
+                  className="input pr-16"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="At least 8 characters — leave blank for OTP-only"
+                  autoComplete="new-password"
+                  minLength={8}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPw((v) => !v)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-semibold text-charcoal/60 hover:text-charcoal px-2 py-1"
+                >
+                  {showPw ? 'Hide' : 'Show'}
+                </button>
+              </div>
+              <p className="mt-1 text-xs text-charcoal/50">
+                Share this with the user securely. They can change it from
+                their security settings.
+              </p>
+            </label>
           </div>
 
           {error && (
@@ -641,6 +676,8 @@ function CreateDriverModal({
   const [momoNumber, setMomoNumber] = useState('')
   const [momoProvider, setMomoProvider] =
     useState<NonNullable<UserCreatePayload['momo_provider']>>('mtn')
+  const [password, setPassword] = useState('')
+  const [showPw, setShowPw] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const create = useMutation({
@@ -667,6 +704,10 @@ function CreateDriverModal({
       setError('MoMo number must be 10 digits starting with 0.')
       return
     }
+    if (password && password.length < 8) {
+      setError('Password must be at least 8 characters (or leave blank for OTP-only).')
+      return
+    }
     const payload: UserCreatePayload = {
       phone,
       full_name: fullName || undefined,
@@ -678,6 +719,7 @@ function CreateDriverModal({
       vehicle_capacity_litres: capacity,
       license_number: licenseNumber,
       base_fee: baseFee,
+      password: password || undefined,
     }
     if (momoNumber) {
       payload.momo_number = momoNumber
@@ -859,6 +901,39 @@ function CreateDriverModal({
             <p className="text-xs text-charcoal/50">
               Drivers must still upload licence, insurance and vehicle photos before approval.
             </p>
+          </section>
+
+          <section className="space-y-3 border-t border-charcoal/10 pt-4">
+            <h3 className="text-xs uppercase tracking-wider font-semibold text-charcoal/50">
+              Password (optional)
+            </h3>
+            <label className="block">
+              <span className="text-sm font-medium text-charcoal/80">
+                Initial password
+              </span>
+              <div className="relative mt-1">
+                <input
+                  type={showPw ? 'text' : 'password'}
+                  className="input pr-16"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="At least 8 characters — leave blank for OTP-only"
+                  autoComplete="new-password"
+                  minLength={8}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPw((v) => !v)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-semibold text-charcoal/60 hover:text-charcoal px-2 py-1"
+                >
+                  {showPw ? 'Hide' : 'Show'}
+                </button>
+              </div>
+              <p className="mt-1 text-xs text-charcoal/50">
+                Share with the driver securely. They can change it from their
+                security settings.
+              </p>
+            </label>
           </section>
 
           {error && (

@@ -13,8 +13,14 @@ import {
 } from '@/api/requests'
 import { useDriverSocket } from '@/hooks/useRequestSocket'
 import { useLocationBroadcaster } from '@/hooks/useLocationBroadcaster'
+import { useLivePosition } from '@/hooks/useLivePosition'
 import { RatingForm } from '@/components/RatingForm'
+import { DriverRouteMap } from '@/components/DriverRouteMap'
 import type { RequestStatus, ServiceRequest } from '@/types'
+
+function navigateUrl(lat: string | number, lng: string | number): string {
+  return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`
+}
 
 const NEXT_STATUS: Record<RequestStatus, RequestStatus | null> = {
   accepted: 'en_route',
@@ -63,6 +69,13 @@ export function DriverDashboard() {
   // Broadcast GPS while online with an active job.
   useLocationBroadcaster(
     isApproved && !!driver.data?.is_online && !!activeQuery.data,
+  )
+
+  // Live device position for the in-app route map (offer + active job).
+  const livePos = useLivePosition(
+    isApproved &&
+      !!driver.data?.is_online &&
+      (!!offerQuery.data || !!activeQuery.data),
   )
 
   // Subscribe to driver WS to nudge offer refetch faster than polling
@@ -199,17 +212,37 @@ export function DriverDashboard() {
               </span>
             </div>
           </div>
-          {NEXT_STATUS[active.status] && (
-            <button
-              onClick={() =>
-                statusMut.mutate({ id: active.id, next: NEXT_STATUS[active.status]! })
-              }
-              disabled={statusMut.isPending}
-              className="mt-4 bg-accent text-charcoal font-bold px-5 py-2.5 rounded-md hover:brightness-110 disabled:opacity-60"
+          <div className="mt-4">
+            <DriverRouteMap
+              pickup={{
+                lat: Number(active.pickup_lat),
+                lng: Number(active.pickup_lng),
+              }}
+              driver={livePos}
+              height={240}
+            />
+          </div>
+          <div className="mt-3 flex flex-wrap gap-3">
+            {NEXT_STATUS[active.status] && (
+              <button
+                onClick={() =>
+                  statusMut.mutate({ id: active.id, next: NEXT_STATUS[active.status]! })
+                }
+                disabled={statusMut.isPending}
+                className="bg-accent text-charcoal font-bold px-5 py-2.5 rounded-md hover:brightness-110 disabled:opacity-60"
+              >
+                {STATUS_LABEL[NEXT_STATUS[active.status]!]}
+              </button>
+            )}
+            <a
+              href={navigateUrl(active.pickup_lat, active.pickup_lng)}
+              target="_blank"
+              rel="noreferrer"
+              className="bg-white border border-charcoal/20 text-charcoal font-semibold px-5 py-2.5 rounded-md hover:bg-charcoal/5 transition inline-flex items-center gap-2"
             >
-              {STATUS_LABEL[NEXT_STATUS[active.status]!]}
-            </button>
-          )}
+              🧭 Open in Google Maps
+            </a>
+          </div>
         </section>
       )}
 
@@ -232,7 +265,18 @@ export function DriverDashboard() {
             Expires at {new Date(offer.expires_at).toLocaleTimeString()}
           </p>
           <SiteSurvey req={offer.request} />
-          <div className="mt-4 flex gap-3">
+          <div className="mt-4">
+            <DriverRouteMap
+              pickup={{
+                lat: Number(offer.request.pickup_lat),
+                lng: Number(offer.request.pickup_lng),
+              }}
+              driver={livePos}
+              height={200}
+              liveRefresh={false}
+            />
+          </div>
+          <div className="mt-4 flex flex-wrap gap-3">
             <button
               onClick={() => acceptMut.mutate(offer.assignment_id)}
               disabled={acceptMut.isPending}
@@ -247,6 +291,14 @@ export function DriverDashboard() {
             >
               Decline
             </button>
+            <a
+              href={navigateUrl(offer.request.pickup_lat, offer.request.pickup_lng)}
+              target="_blank"
+              rel="noreferrer"
+              className="ml-auto text-sm text-primary font-semibold hover:underline inline-flex items-center gap-1.5"
+            >
+              🧭 Preview in Google Maps
+            </a>
           </div>
         </section>
       )}

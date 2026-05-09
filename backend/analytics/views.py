@@ -380,9 +380,11 @@ MOMO_RE = re.compile(r"^0\d{9}$")
 @throttle_classes([AdminUserCreateThrottle])
 def user_create(request):
     """Admin: create a new user. If role=driver and driver fields are provided,
-    a Driver profile (status=pending) is also created. Account is created with
-    an unusable password — the user signs in via OTP. Phone is marked verified
-    since an admin is vouching for it.
+    a Driver profile (status=pending) is also created. If a password is supplied
+    the user can sign in by phone+password right away; otherwise the account
+    has an unusable password and the user must sign in via OTP and set one
+    from their security settings. Phone is marked verified since an admin is
+    vouching for it.
 
     Privileged roles (admin, fleet_admin) require is_superuser to create,
     preventing lateral self-escalation by ordinary admins.
@@ -403,6 +405,16 @@ def user_create(request):
     email = email_raw.lower() or None
     full_name = (data.get("full_name") or "").strip()
     region_id = data.get("region_id")
+    password = (data.get("password") or "").strip() or None
+    if password is not None:
+        from django.contrib.auth.password_validation import validate_password
+        from django.core.exceptions import ValidationError as DjangoValidationError
+        if len(password) < 8:
+            raise ValidationError({"password": "Password must be at least 8 characters."})
+        try:
+            validate_password(password)
+        except DjangoValidationError as exc:
+            raise ValidationError({"password": list(exc.messages)})
 
     if User.objects.filter(phone=phone).exists():
         raise ValidationError({"phone": "A user with this phone already exists."})
@@ -465,6 +477,7 @@ def user_create(request):
         with transaction.atomic():
             u = User.objects.create_user(
                 phone=phone,
+                password=password,
                 email=email,
                 full_name=full_name,
                 role=role,
