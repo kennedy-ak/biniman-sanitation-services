@@ -3,15 +3,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { adminDriverAction, adminListDrivers } from '@/api/drivers'
 import { adminFleetAction, adminListFleets } from '@/api/fleets'
 import { EmptyState, PageHeader, SegmentedTabs } from '@/components/admin/PageHeader'
+import { DriverDocuments } from '@/components/admin/DriverDocuments'
 
 type Tab = 'drivers' | 'fleets'
-
-const DOC_LABEL: Record<string, string> = {
-  national_id: 'National ID',
-  driving_license: 'Driving license',
-  vehicle_registration: 'Vehicle reg.',
-  epa_permit: 'EPA permit',
-}
 
 export function AdminApprovals() {
   const [tab, setTab] = useState<Tab>('drivers')
@@ -91,8 +85,6 @@ function DriverQueue() {
   return (
     <div className="grid lg:grid-cols-2 gap-4">
       {list.data.map((d) => {
-        const docCount = d.documents.length
-        const docComplete = docCount >= 4
         return (
           <div
             key={d.id}
@@ -115,38 +107,8 @@ function DriverQueue() {
               </div>
             </div>
 
-            <div className="mt-4 p-3 rounded-lg bg-charcoal/[0.02] border border-charcoal/5">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-semibold text-charcoal/70">
-                  Documents
-                </span>
-                <span
-                  className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
-                    docComplete
-                      ? 'bg-green-100 text-green-700'
-                      : 'bg-amber-100 text-amber-700'
-                  }`}
-                >
-                  {docCount}/4 {docComplete ? 'complete' : 'pending'}
-                </span>
-              </div>
-              {docCount > 0 ? (
-                <div className="grid grid-cols-2 gap-1.5">
-                  {d.documents.map((doc) => (
-                    <a
-                      key={doc.id}
-                      href={doc.file_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-[11px] text-primary hover:underline truncate flex items-center gap-1"
-                    >
-                      📎 {DOC_LABEL[doc.doc_type] || doc.doc_type}
-                    </a>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-[11px] text-charcoal/50">No documents uploaded yet.</p>
-              )}
+            <div className="mt-4">
+              <DriverDocuments driver={d} compact />
             </div>
 
             <div className="mt-4 flex gap-2">

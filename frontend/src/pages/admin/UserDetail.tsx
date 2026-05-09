@@ -9,6 +9,7 @@ import {
 } from '@/api/analytics'
 import { fetchRegions } from '@/api/auth'
 import { Stars } from '@/components/RatingForm'
+import { DriverDocuments } from '@/components/admin/DriverDocuments'
 import type { RequestStatus, Role } from '@/types'
 
 const ROLE_META: Record<Role, { label: string; icon: string; tone: string }> = {
@@ -291,6 +292,8 @@ export function AdminUserDetail() {
           </div>
         </section>
       )}
+
+      {isDriver && driver && <DriverDocuments driver={driver} />}
 
       {/* Trips */}
       <section className="bg-white border border-charcoal/5 rounded-2xl shadow-sm overflow-hidden">
