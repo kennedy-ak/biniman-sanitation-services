@@ -66,9 +66,11 @@ export function DriverDashboard() {
     refetchInterval: 30000,
   })
 
-  // Broadcast GPS while online with an active job.
+  // Broadcast GPS while online so the driver stays a valid match candidate
+  // (last_seen_at + last_lat/lng stay fresh). During an active job, the
+  // backend additionally forwards each ping to the customer's WS.
   useLocationBroadcaster(
-    isApproved && !!driver.data?.is_online && !!activeQuery.data,
+    isApproved && !!driver.data?.is_online,
   )
 
   // Live device position for the in-app route map (offer + active job).
