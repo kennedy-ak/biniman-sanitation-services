@@ -44,11 +44,12 @@ def initialize_payment_for_request(request: ServiceRequest) -> Payment:
 
 
 def confirm_payment(payment: Payment, *, channel: str = "unknown") -> Payment:
-    """Mark a payment succeeded; pay the driver out if the job is complete.
+    """Mark a payment succeeded and kick off the driver matching cascade.
 
-    Match-first / pay-after model: matching already happened at booking. The
-    customer pays after the driver finishes, so successful payment is what
-    releases the driver payout.
+    Pay-first model: the request stays PENDING until the customer pays. A
+    successful payment is what dispatches it to drivers. The driver payout is
+    released later when the driver marks the job COMPLETED (see
+    `views.driver_status`).
 
     Idempotent — calling repeatedly is safe.
     """
@@ -65,16 +66,11 @@ def confirm_payment(payment: Payment, *, channel: str = "unknown") -> Payment:
         payment.paid_at = timezone.now()
         payment.save(update_fields=["status", "method", "paid_at", "updated_at"])
 
-    # If the job is already finished and the driver hasn't been paid yet,
-    # release the payout now. If they pay before the job is done (rare —
-    # would only happen via a manual /payments/init/ call), the payout will
-    # be triggered later by a separate path; trigger_payout itself is a no-op
-    # when the request has no driver yet.
-    from payments.tasks import task_trigger_payout
-    task_trigger_payout.delay(payment.request_id)
+    from requests_app.tasks import start_cascade
+    start_cascade.delay(payment.request_id)
 
     logger.info(
-        "Payment %s succeeded for req %s — payout queued",
+        "Payment %s succeeded for req %s — cascade triggered",
         payment.paystack_reference, payment.request_id,
     )
     return payment

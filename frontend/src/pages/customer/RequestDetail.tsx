@@ -130,8 +130,8 @@ export function CustomerRequestDetail() {
         </div>
       </div>
 
-      {/* Pay CTA — appears once the job is done */}
-      {sr.status === 'completed' && (!sr.payment_status || sr.payment_status !== 'succeeded') && (
+      {/* Pay CTA — pay-first flow: shown until payment succeeds. */}
+      {sr.payment_status !== 'succeeded' && !isTerminal && (
         <Link
           to={`/customer/requests/${sr.id}/pay`}
           className="block bg-gradient-to-r from-accent to-amber-300 text-charcoal rounded-2xl p-5 shadow-sm hover:shadow-md transition group"
@@ -142,10 +142,10 @@ export function CustomerRequestDetail() {
                 💳
               </div>
               <div>
-                <div className="font-bold">Pay for your service</div>
+                <div className="font-bold">Complete payment to dispatch a driver</div>
                 <div className="text-sm text-charcoal/70">
-                  The driver completed the job. Settle the bill so they can
-                  receive their payout.
+                  Your request is on hold until payment is confirmed. We'll
+                  start matching a driver the moment it clears.
                 </div>
               </div>
             </div>

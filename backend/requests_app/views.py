@@ -32,7 +32,6 @@ from requests_app.serializers import (
     StatusTransitionSerializer,
 )
 from requests_app.services.broadcast import push_offer_cancelled, push_request_status
-from requests_app.tasks import start_cascade
 
 
 def _nearest_idle_driver_distance_km(region: Region, lat: float, lng: float) -> float:
@@ -145,9 +144,9 @@ def create_request(request):
             **survey_fields,
         )
 
-    # Match-first: kick the driver cascade immediately. Customer pays after
-    # the job is completed (see payments.orchestrator).
-    start_cascade.delay(sr.id)
+    # Pay-first: do NOT fire the cascade here. The customer is redirected to
+    # /pay; on payment success `payments.orchestrator.confirm_payment` fires
+    # `start_cascade.delay()`. Unpaid PENDING requests never reach a driver.
     return Response(ServiceRequestSerializer(sr).data, status=status.HTTP_201_CREATED)
 
 
