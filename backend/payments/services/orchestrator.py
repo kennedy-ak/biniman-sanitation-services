@@ -44,7 +44,11 @@ def initialize_payment_for_request(request: ServiceRequest) -> Payment:
 
 
 def confirm_payment(payment: Payment, *, channel: str = "unknown") -> Payment:
-    """Mark a payment succeeded and start the matching cascade.
+    """Mark a payment succeeded; pay the driver out if the job is complete.
+
+    Match-first / pay-after model: matching already happened at booking. The
+    customer pays after the driver finishes, so successful payment is what
+    releases the driver payout.
 
     Idempotent — calling repeatedly is safe.
     """
@@ -61,12 +65,18 @@ def confirm_payment(payment: Payment, *, channel: str = "unknown") -> Payment:
         payment.paid_at = timezone.now()
         payment.save(update_fields=["status", "method", "paid_at", "updated_at"])
 
-    # Defer to avoid circular imports.
-    from requests_app.tasks import start_cascade
+    # If the job is already finished and the driver hasn't been paid yet,
+    # release the payout now. If they pay before the job is done (rare —
+    # would only happen via a manual /payments/init/ call), the payout will
+    # be triggered later by a separate path; trigger_payout itself is a no-op
+    # when the request has no driver yet.
+    from payments.tasks import task_trigger_payout
+    task_trigger_payout.delay(payment.request_id)
 
-    start_cascade.delay(payment.request_id)
-    logger.info("Payment %s succeeded — cascade triggered for req %s",
-                payment.paystack_reference, payment.request_id)
+    logger.info(
+        "Payment %s succeeded for req %s — payout queued",
+        payment.paystack_reference, payment.request_id,
+    )
     return payment
 
 
@@ -100,12 +110,27 @@ def refund_request(request: ServiceRequest, reason: str = "") -> Payment | None:
 
 
 def trigger_payout(request: ServiceRequest) -> Payout | None:
-    """Transfer the driver's share to their MoMo wallet via Paystack."""
+    """Transfer the driver's share to their MoMo wallet via Paystack.
+
+    Only releases the payout once BOTH conditions hold:
+      * the customer has paid (Payment.SUCCEEDED)
+      * the driver has marked the job COMPLETED
+    Safe to call from either side — the second event triggers it.
+    Idempotent: returns the existing Payout if one exists.
+    """
+    from requests_app.models import RequestStatus  # avoid circular import
+
     if hasattr(request, "payout"):
         return request.payout
     payment = getattr(request, "payment", None)
     if not payment or payment.status != PaymentStatus.SUCCEEDED:
-        logger.warning("Cannot pay out req %s: payment not succeeded", request.id)
+        logger.info("Payout deferred for req %s: payment not succeeded yet", request.id)
+        return None
+    if request.status != RequestStatus.COMPLETED.value:
+        logger.info(
+            "Payout deferred for req %s: job not completed (status=%s)",
+            request.id, request.status,
+        )
         return None
     driver: Driver | None = request.driver
     if not driver:

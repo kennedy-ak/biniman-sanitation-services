@@ -1,3 +1,4 @@
+import uuid
 from decimal import Decimal
 
 from django.conf import settings
@@ -207,6 +208,8 @@ class RequestAssignment(models.Model):
         max_length=12, choices=AssignmentOutcome.choices, default=AssignmentOutcome.PENDING
     )
     decided_at = models.DateTimeField(null=True, blank=True)
+    # Groups assignments belonging to a single parallel-broadcast round.
+    batch_uuid = models.UUIDField(null=True, blank=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

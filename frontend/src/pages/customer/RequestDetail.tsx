@@ -121,8 +121,8 @@ export function CustomerRequestDetail() {
         </div>
       </div>
 
-      {/* Pay CTA */}
-      {sr.status === 'pending' && (
+      {/* Pay CTA — appears once the job is done */}
+      {sr.status === 'completed' && (!sr.payment_status || sr.payment_status !== 'succeeded') && (
         <Link
           to={`/customer/requests/${sr.id}/pay`}
           className="block bg-gradient-to-r from-accent to-amber-300 text-charcoal rounded-2xl p-5 shadow-sm hover:shadow-md transition group"
@@ -133,14 +133,15 @@ export function CustomerRequestDetail() {
                 💳
               </div>
               <div>
-                <div className="font-bold">Complete your payment</div>
+                <div className="font-bold">Pay for your service</div>
                 <div className="text-sm text-charcoal/70">
-                  We'll start matching a driver as soon as payment clears.
+                  The driver completed the job. Settle the bill so they can
+                  receive their payout.
                 </div>
               </div>
             </div>
             <span className="font-bold text-sm group-hover:translate-x-1 transition">
-              Pay now →
+              Pay GHS {sr.quote_total} →
             </span>
           </div>
         </Link>
@@ -198,9 +199,13 @@ export function CustomerRequestDetail() {
                       {step.label}
                     </div>
                     <div className="text-xs text-charcoal/60">
-                      {active && sr.status === 'pending' && 'Waiting for payment to confirm'}
-                      {!active && step.desc}
-                      {active && sr.status !== 'pending' && step.desc}
+                      {active && step.value === 'pending'
+                        ? 'Searching for the nearest driver…'
+                        : active &&
+                            step.value === 'completed' &&
+                            sr.payment_status !== 'succeeded'
+                          ? 'Job done — settle payment to release driver payout'
+                          : step.desc}
                     </div>
                   </div>
                 </li>

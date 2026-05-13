@@ -180,7 +180,7 @@ export function CustomerNewRequest() {
         preferred_time: preferredTime,
         someone_on_site: someoneOnSite,
       }),
-    onSuccess: (sr) => navigate(`/customer/requests/${sr.id}/pay`),
+    onSuccess: (sr) => navigate(`/customer/requests/${sr.id}`),
   })
 
   const canSubmit = !!regionId && !!lat && !!lng && !!gatePhoto
@@ -461,7 +461,7 @@ export function CustomerNewRequest() {
                 onClick={() => submit.mutate()}
                 className="w-full bg-accent text-charcoal font-bold py-3 rounded-lg hover:brightness-110 disabled:opacity-60 transition shadow-sm"
               >
-                {submit.isPending ? 'Submitting…' : 'Confirm & continue to payment →'}
+                {submit.isPending ? 'Submitting…' : 'Confirm & request driver →'}
               </button>
               {submit.isError && (
                 <div className="mt-2 text-xs text-red-200">

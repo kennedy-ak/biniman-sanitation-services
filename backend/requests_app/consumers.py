@@ -42,6 +42,9 @@ class DriverConsumer(AsyncJsonWebsocketConsumer):
     async def offer_new(self, event):
         await self.send_json(event)
 
+    async def offer_cancelled(self, event):
+        await self.send_json(event)
+
     @database_sync_to_async
     def _driver_id(self, user) -> int | None:
         return getattr(getattr(user, "driver_profile", None), "id", None)

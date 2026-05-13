@@ -201,7 +201,7 @@ function SuccessState() {
         Payment received
       </h3>
       <p className="mt-1 text-sm text-charcoal/70">
-        Matching you with the nearest driver now…
+        Thanks! The driver will be paid out shortly.
       </p>
     </div>
   )
@@ -227,8 +227,8 @@ function PendingState({
             Complete payment in the secure window
           </h3>
           <p className="mt-1 text-sm text-charcoal/70">
-            Paystack opened in a new tab. After paying, click "I've paid" so we
-            can confirm and dispatch a driver.
+            Paystack opened in a new tab. After paying, click "I've paid" so
+            we can confirm and release the driver's payout.
           </p>
         </div>
       </div>

@@ -41,6 +41,20 @@ def push_offer(assignment: RequestAssignment) -> None:
     async_to_sync(layer.group_send)(driver_group(assignment.driver_id), payload)
 
 
+def push_offer_cancelled(assignment: RequestAssignment, *, reason: str = "claimed_by_other") -> None:
+    """Tell a driver that an offer they had is no longer claimable."""
+    layer = _layer()
+    if not layer:
+        return
+    payload = {
+        "type": "offer.cancelled",
+        "assignment_id": assignment.id,
+        "request_id": assignment.request_id,
+        "reason": reason,
+    }
+    async_to_sync(layer.group_send)(driver_group(assignment.driver_id), payload)
+
+
 def push_request_status(request: ServiceRequest) -> None:
     layer = _layer()
     if not layer:
