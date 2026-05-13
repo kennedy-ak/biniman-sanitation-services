@@ -1,14 +1,17 @@
 """Celery tasks for the matching cascade and request lifecycle."""
 import logging
+import uuid
 
 from celery import shared_task
 from django.db import transaction
+from django.utils import timezone
 
 from requests_app.models import RequestAssignment, RequestStatus, ServiceRequest
 from requests_app.services.matching import (
-    expire_pending_assignment,
+    batch_has_acceptance,
+    expire_batch,
     mark_unfulfilled,
-    offer_to_next_driver,
+    offer_to_next_batch,
 )
 
 logger = logging.getLogger(__name__)
@@ -24,53 +27,59 @@ def start_cascade(request_id: int) -> None:
     if request.status != RequestStatus.PENDING.value:
         return
 
-    assignment = offer_to_next_driver(request)
-    if not assignment:
-        mark_unfulfilled(request)
-        from requests_app.services.broadcast import push_request_status
-        push_request_status(request)
-        return
-
-    from requests_app.services.broadcast import push_offer, push_request_status
-    push_offer(assignment)
-    push_request_status(request)
-    handle_offer_timeout.apply_async(args=[assignment.id], countdown=_seconds_until(assignment))
+    _dispatch_next_batch(request)
 
 
 @shared_task
-def handle_offer_timeout(assignment_id: int) -> None:
-    """Run when an offer's accept window has elapsed. If still pending, advance cascade."""
+def handle_batch_timeout(batch_uuid_str: str) -> None:
+    """If batch is still open at expiry, time it out and advance to the next batch."""
     try:
-        assignment = RequestAssignment.objects.select_related("request").get(pk=assignment_id)
-    except RequestAssignment.DoesNotExist:
+        batch_uuid = uuid.UUID(batch_uuid_str)
+    except (TypeError, ValueError):
         return
 
-    if not expire_pending_assignment(assignment):
+    if batch_has_acceptance(batch_uuid):
         return
 
-    request = assignment.request
+    sample = (
+        RequestAssignment.objects.select_related("request")
+        .filter(batch_uuid=batch_uuid)
+        .first()
+    )
+    if not sample:
+        return
+
+    with transaction.atomic():
+        expire_batch(batch_uuid)
+
+    request = sample.request
     request.refresh_from_db()
     if request.status != RequestStatus.ASSIGNED.value:
         return
 
+    _dispatch_next_batch(request)
+
+
+def _dispatch_next_batch(request: ServiceRequest) -> None:
     from requests_app.services.broadcast import push_offer, push_request_status
 
-    next_assignment = offer_to_next_driver(request)
-    if not next_assignment:
+    assignments = offer_to_next_batch(request)
+    if not assignments:
         with transaction.atomic():
             mark_unfulfilled(request)
         push_request_status(request)
         return
 
-    push_offer(next_assignment)
+    for assignment in assignments:
+        push_offer(assignment)
     push_request_status(request)
-    handle_offer_timeout.apply_async(
-        args=[next_assignment.id], countdown=_seconds_until(next_assignment)
+
+    countdown = _seconds_until(assignments[0])
+    handle_batch_timeout.apply_async(
+        args=[str(assignments[0].batch_uuid)], countdown=countdown
     )
 
 
 def _seconds_until(assignment: RequestAssignment) -> int:
-    from django.utils import timezone
-
     delta = (assignment.expires_at - timezone.now()).total_seconds()
     return max(int(delta) + 1, 1)

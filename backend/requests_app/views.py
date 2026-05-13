@@ -31,9 +31,8 @@ from requests_app.serializers import (
     ServiceRequestSerializer,
     StatusTransitionSerializer,
 )
-from requests_app.services.broadcast import push_request_status
-from requests_app.services.matching import offer_to_next_driver
-from requests_app.tasks import handle_offer_timeout, start_cascade
+from requests_app.services.broadcast import push_offer_cancelled, push_request_status
+from requests_app.tasks import start_cascade
 
 
 def _nearest_idle_driver_distance_km(region: Region, lat: float, lng: float) -> float:
@@ -146,7 +145,9 @@ def create_request(request):
             **survey_fields,
         )
 
-    # Cascade now fires only after payment succeeds (see payments.orchestrator).
+    # Match-first: kick the driver cascade immediately. Customer pays after
+    # the job is completed (see payments.orchestrator).
+    start_cascade.delay(sr.id)
     return Response(ServiceRequestSerializer(sr).data, status=status.HTTP_201_CREATED)
 
 
@@ -291,23 +292,49 @@ def driver_current_offer(request):
 @permission_classes([IsAuthenticated, IsDriver])
 def driver_accept(request, assignment_id: int):
     driver = _require_driver(request.user)
-    offer = get_object_or_404(RequestAssignment, pk=assignment_id, driver=driver)
-
-    if not offer.is_active():
-        raise ValidationError("Offer has expired or is no longer pending.")
 
     with transaction.atomic():
-        offer.outcome = AssignmentOutcome.ACCEPTED
-        offer.decided_at = timezone.now()
-        offer.save(update_fields=["outcome", "decided_at"])
+        try:
+            offer = (
+                RequestAssignment.objects.select_for_update()
+                .select_related("request")
+                .get(pk=assignment_id, driver=driver)
+            )
+        except RequestAssignment.DoesNotExist:
+            raise ValidationError("Offer not found.")
 
-        sr = offer.request
+        if offer.outcome != AssignmentOutcome.PENDING:
+            raise ValidationError("Offer is no longer pending.")
+        if timezone.now() >= offer.expires_at:
+            raise ValidationError("Offer has expired.")
+
+        sr = (
+            ServiceRequest.objects.select_for_update().get(pk=offer.request_id)
+        )
         if sr.status != RequestStatus.ASSIGNED.value:
             raise ValidationError("Request is no longer assignable.")
+
+        now = timezone.now()
+        offer.outcome = AssignmentOutcome.ACCEPTED
+        offer.decided_at = now
+        offer.save(update_fields=["outcome", "decided_at"])
+
         sr.driver = driver
         sr.transition(RequestStatus.ACCEPTED.value)
         sr.save(update_fields=["driver", "status", "accepted_at"])
 
+        superseded = list(
+            sr.assignments.filter(outcome=AssignmentOutcome.PENDING).exclude(pk=offer.pk)
+        )
+        if superseded:
+            sr.assignments.filter(
+                outcome=AssignmentOutcome.PENDING
+            ).exclude(pk=offer.pk).update(
+                outcome=AssignmentOutcome.SUPERSEDED, decided_at=now
+            )
+
+    for sibling in superseded:
+        push_offer_cancelled(sibling)
     push_request_status(sr)
     return Response(ServiceRequestSerializer(sr).data)
 
@@ -315,6 +342,9 @@ def driver_accept(request, assignment_id: int):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated, IsDriver])
 def driver_decline(request, assignment_id: int):
+    """Mark the driver's own offer as declined. The cascade advances when the
+    batch's timeout fires (see `tasks.handle_batch_timeout`).
+    """
     driver = _require_driver(request.user)
     offer = get_object_or_404(RequestAssignment, pk=assignment_id, driver=driver)
     if offer.outcome != AssignmentOutcome.PENDING:
@@ -323,23 +353,6 @@ def driver_decline(request, assignment_id: int):
     offer.outcome = AssignmentOutcome.DECLINED
     offer.decided_at = timezone.now()
     offer.save(update_fields=["outcome", "decided_at"])
-
-    sr = offer.request
-    sr.refresh_from_db()
-    if sr.status == RequestStatus.ASSIGNED.value:
-        next_offer = offer_to_next_driver(sr)
-        if not next_offer:
-            sr.driver = None
-            sr.transition(RequestStatus.UNFULFILLED.value)
-            sr.save(update_fields=["driver", "status"])
-        else:
-            from requests_app.services.broadcast import push_offer
-            push_offer(next_offer)
-            handle_offer_timeout.apply_async(
-                args=[next_offer.id],
-                countdown=int((next_offer.expires_at - timezone.now()).total_seconds()) + 1,
-            )
-    push_request_status(sr)
     return Response({"ok": True})
 
 
@@ -360,6 +373,8 @@ def driver_status(request, request_id: int):
     push_request_status(sr)
 
     if target == RequestStatus.COMPLETED.value:
+        # Pay-after-job model: only fires if the customer has already paid.
+        # Otherwise the payout fires when payment confirms (see orchestrator).
         from payments.tasks import task_trigger_payout
 
         task_trigger_payout.delay(sr.id)

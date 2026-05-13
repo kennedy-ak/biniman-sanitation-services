@@ -28,6 +28,14 @@ class PricingConfig(models.Model):
     matching_radius_km = models.PositiveIntegerField(default=15)
     accept_window_seconds = models.PositiveIntegerField(default=60)
 
+    # Dispatch tuning — see requests_app.services.matching
+    parallel_offer_count = models.PositiveSmallIntegerField(default=3)
+    eta_refine_top_k = models.PositiveSmallIntegerField(default=5)
+    driver_stale_after_seconds = models.PositiveIntegerField(default=120)
+    rank_weight_distance = models.DecimalField(max_digits=3, decimal_places=2, default=Decimal("0.55"))
+    rank_weight_rating = models.DecimalField(max_digits=3, decimal_places=2, default=Decimal("0.25"))
+    rank_weight_fairness = models.DecimalField(max_digits=3, decimal_places=2, default=Decimal("0.20"))
+
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
