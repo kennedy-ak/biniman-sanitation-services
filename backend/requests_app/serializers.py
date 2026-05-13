@@ -58,6 +58,7 @@ class QuotePreviewSerializer(serializers.Serializer):
 class ServiceRequestSerializer(serializers.ModelSerializer):
     customer = UserSerializer(read_only=True)
     driver = DriverSerializer(read_only=True)
+    payment_status = serializers.SerializerMethodField()
 
     class Meta:
         model = ServiceRequest
@@ -70,11 +71,15 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
             "last_emptied", "is_overflowing", "preferred_time", "someone_on_site",
             "quote_total", "quote_base_fee", "quote_distance_km",
             "quote_distance_fee", "quote_tier_fee", "commission_amount",
-            "status", "cancel_reason",
+            "status", "cancel_reason", "payment_status",
             "created_at", "accepted_at", "en_route_at",
             "arrived_at", "completed_at", "cancelled_at",
         )
         read_only_fields = fields
+
+    def get_payment_status(self, obj) -> str | None:
+        payment = getattr(obj, "payment", None)
+        return payment.status if payment else None
 
 
 class RequestAssignmentSerializer(serializers.ModelSerializer):

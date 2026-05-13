@@ -127,6 +127,7 @@ export interface ServiceRequest {
   commission_amount: string
   status: RequestStatus
   cancel_reason: string
+  payment_status: 'pending' | 'succeeded' | 'failed' | 'refunded' | null
   created_at: string
   accepted_at: string | null
   en_route_at: string | null
