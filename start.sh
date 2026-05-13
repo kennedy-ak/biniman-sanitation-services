@@ -77,10 +77,18 @@ deactivate
 echo ">>> frontend: install + build"
 cd "$FRONTEND"
 
-# bake API URL into the build
-cat > .env.production <<EOF
+# bake API URL + Mapbox token into the build.
+# Only create .env.production if it does not exist — preserves any secrets
+# (VITE_MAPBOX_TOKEN, etc.) the operator has set on the VPS so redeploys
+# don't wipe them. Edit the file in place to update tokens; this block won't
+# clobber it.
+if [ ! -f .env.production ]; then
+  cat > .env.production <<EOF
 VITE_API_URL=https://bini.vendlyghana.space/api/v1
+VITE_MAPBOX_TOKEN=
 EOF
+  echo "!!! Wrote default frontend/.env.production — add VITE_MAPBOX_TOKEN then re-run."
+fi
 
 npm install
 npm run build
