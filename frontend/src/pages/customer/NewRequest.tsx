@@ -180,7 +180,9 @@ export function CustomerNewRequest() {
         preferred_time: preferredTime,
         someone_on_site: someoneOnSite,
       }),
-    onSuccess: (sr) => navigate(`/customer/requests/${sr.id}`),
+    // Pay-first: send the customer straight to the Pay page. The cascade
+    // only starts once payment succeeds.
+    onSuccess: (sr) => navigate(`/customer/requests/${sr.id}/pay`),
   })
 
   const canSubmit = !!regionId && !!lat && !!lng && !!gatePhoto
