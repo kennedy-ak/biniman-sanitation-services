@@ -97,6 +97,16 @@ def webhook(request):
     raw = request.body
     sig = request.headers.get("x-paystack-signature")
     if not paystack.verify_signature(raw, sig):
+        # Diagnostic log — short prefix only, never the full secret/sig.
+        from django.conf import settings
+        sk = settings.PAYSTACK_SECRET_KEY or ""
+        wh = settings.PAYSTACK_WEBHOOK_SECRET or ""
+        logger.warning(
+            "Webhook signature rejected: sig_present=%s sig_len=%s body_len=%s "
+            "sk_prefix=%s sk_len=%s wh_prefix=%s wh_len=%s",
+            bool(sig), len(sig or ""), len(raw),
+            sk[:10], len(sk), wh[:10], len(wh),
+        )
         return Response({"detail": "invalid signature"}, status=400)
 
     try:
