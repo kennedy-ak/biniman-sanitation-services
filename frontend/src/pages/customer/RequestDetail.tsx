@@ -55,11 +55,20 @@ export function CustomerRequestDetail() {
     }
   }, [latest, id, qc])
 
+  const [cancelError, setCancelError] = useState<string | null>(null)
+
   const cancelMut = useMutation({
     mutationFn: (reason: string) => cancelRequest(id, reason),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['request', id] })
       setShowCancel(false)
+      setCancelError(null)
+    },
+    onError: (err: Error & { response?: { data?: { detail?: string; reason?: string[] } } }) => {
+      const data = err.response?.data
+      setCancelError(
+        data?.detail ?? data?.reason?.[0] ?? err.message ?? 'Could not cancel the request.',
+      )
     },
   })
 
@@ -318,6 +327,11 @@ export function CustomerRequestDetail() {
                 rows={3}
                 className="input mt-3 resize-none"
               />
+              {cancelError && (
+                <p className="mt-2 text-sm text-red-700 bg-red-100 border border-red-200 rounded-md px-3 py-2">
+                  {cancelError}
+                </p>
+              )}
               <div className="mt-3 flex gap-2 justify-end">
                 <button
                   onClick={() => setShowCancel(false)}
