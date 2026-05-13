@@ -11,6 +11,7 @@ import { CustomerNewRequest } from '@/pages/customer/NewRequest'
 import { CustomerRequestList } from '@/pages/customer/RequestList'
 import { CustomerRequestDetail } from '@/pages/customer/RequestDetail'
 import { CustomerPay } from '@/pages/customer/Pay'
+import { CustomerPaymentReturn } from '@/pages/customer/PaymentReturn'
 import { DriverDashboard } from '@/pages/driver/Dashboard'
 import { DriverOnboard } from '@/pages/driver/Onboard'
 import { FleetDashboard } from '@/pages/fleet/Dashboard'
@@ -87,6 +88,7 @@ export function AppRoutes() {
         <Route path="requests" element={<CustomerRequestList />} />
         <Route path="requests/:id" element={<CustomerRequestDetail />} />
         <Route path="requests/:id/pay" element={<CustomerPay />} />
+        <Route path="payment-return" element={<CustomerPaymentReturn />} />
         <Route path="profile" element={<CustomerProfile />} />
       </Route>
 
