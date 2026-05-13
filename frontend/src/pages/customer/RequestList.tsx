@@ -40,6 +40,12 @@ export function CustomerRequestList() {
     }
   }, [data])
 
+  // Chronological order (oldest first) to assign stable seq numbers
+  const seqMap = useMemo(() => {
+    const sorted = [...data].sort((a, b) => +new Date(a.created_at) - +new Date(b.created_at))
+    return new Map(sorted.map((r, i) => [r.id, i + 1]))
+  }, [data])
+
   const visible = data
     .filter((r) => {
       if (filter === 'all') return true
@@ -107,7 +113,7 @@ export function CustomerRequestList() {
       ) : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {visible.map((sr) => (
-            <RequestCard key={sr.id} sr={sr} />
+            <RequestCard key={sr.id} sr={sr} seq={seqMap.get(sr.id) ?? sr.id} />
           ))}
         </div>
       )}
@@ -115,12 +121,13 @@ export function CustomerRequestList() {
   )
 }
 
-function RequestCard({ sr }: { sr: ServiceRequest }) {
+function RequestCard({ sr, seq }: { sr: ServiceRequest; seq: number }) {
   const meta = STATUS_META[sr.status]
   const isActive = ACTIVE.includes(sr.status)
   return (
     <Link
       to={`/customer/requests/${sr.id}`}
+      state={{ seq }}
       className={`group bg-white border rounded-2xl p-5 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition ${
         isActive ? 'border-primary/30' : 'border-charcoal/5'
       }`}
@@ -137,7 +144,7 @@ function RequestCard({ sr }: { sr: ServiceRequest }) {
       </div>
       <div className="mt-3">
         <div className="font-bold text-charcoal">
-          #{sr.id} · {sr.waste_type.replace('_', ' ')}
+          Request {seq} · {sr.waste_type.replace('_', ' ')}
         </div>
         <div className="mt-0.5 text-xs text-charcoal/60 capitalize">
           {sr.volume_tier} tank

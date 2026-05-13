@@ -68,16 +68,17 @@ def initialize_transaction(*, email: str, amount_ghs: Decimal, reference: str | 
             "access_code": f"mock_{ref}",
         }
 
-    return _post(
-        "/transaction/initialize",
-        {
-            "email": email,
-            "amount": amount_kobo,
-            "reference": ref,
-            "currency": "GHS",
-            "channels": ["mobile_money", "card"],
-        },
-    )
+    payload: dict[str, Any] = {
+        "email": email,
+        "amount": amount_kobo,
+        "reference": ref,
+        "currency": "GHS",
+        "channels": ["mobile_money", "card"],
+    }
+    callback_url = getattr(settings, "PAYSTACK_CALLBACK_URL", "")
+    if callback_url:
+        payload["callback_url"] = callback_url
+    return _post("/transaction/initialize", payload)
 
 
 def verify_transaction(reference: str) -> dict:

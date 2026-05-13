@@ -76,6 +76,11 @@ export async function cancelRequest(id: number, reason?: string) {
   return data
 }
 
+export async function retryRequest(id: number) {
+  const { data } = await api.post<ServiceRequest>(`/requests/${id}/retry/`)
+  return data
+}
+
 // ----- Driver -----
 
 // Backend DecimalField(max_digits=10, decimal_places=7) — round before sending.
@@ -137,5 +142,10 @@ export async function transitionStatus(requestId: number, status: RequestStatus)
     `/requests/driver/${requestId}/status/`,
     { status },
   )
+  return data
+}
+
+export async function fetchDriverHistory() {
+  const { data } = await api.get<ServiceRequest[]>('/requests/driver/history/')
   return data
 }

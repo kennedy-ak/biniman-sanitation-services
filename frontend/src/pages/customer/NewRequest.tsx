@@ -27,10 +27,10 @@ const WASTE_TYPES: {
   { value: 'industrial', label: 'Industrial', desc: 'Liquid industrial waste', icon: '🏭' },
 ]
 
-const TIERS: { value: VolumeTier; label: string; range: string }[] = [
-  { value: 'small', label: 'Small', range: '≤ 2,000 L' },
-  { value: 'medium', label: 'Medium', range: '2,000–5,000 L' },
-  { value: 'large', label: 'Large', range: '5,000+ L' },
+const TIERS: { value: VolumeTier; label: string; range: string; icon: string }[] = [
+  { value: 'small', label: 'Small', range: '≤ 2,000 L', icon: '🥤' },
+  { value: 'medium', label: 'Medium', range: '2,000–5,000 L', icon: '🪣' },
+  { value: 'large', label: 'Large', range: '5,000+ L', icon: '🛢️' },
 ]
 
 const GATE_FIT_OPTS: { value: GateFit; label: string }[] = [
@@ -40,15 +40,15 @@ const GATE_FIT_OPTS: { value: GateFit; label: string }[] = [
 ]
 
 const TANK_LOCATION_OPTS: { value: TankLocation; label: string }[] = [
-  { value: 'front', label: 'Front of house' },
-  { value: 'side', label: 'Side of house' },
-  { value: 'back', label: 'Back of house' },
+  { value: 'front', label: 'Front' },
+  { value: 'side', label: 'Side' },
+  { value: 'back', label: 'Back' },
   { value: 'under_driveway', label: 'Under driveway' },
   { value: 'other', label: 'Other' },
 ]
 
 const PARKING_OPTS: { value: ParkingDistance; label: string }[] = [
-  { value: 'at_gate', label: 'Right at the gate' },
+  { value: 'at_gate', label: 'At the gate' },
   { value: '5_10', label: '5–10 m away' },
   { value: '10_20', label: '10–20 m away' },
   { value: '20_plus', label: '20 m or more' },
@@ -56,17 +56,17 @@ const PARKING_OPTS: { value: ParkingDistance; label: string }[] = [
 
 const TANK_COVER_OPTS: { value: TankCoverState; label: string }[] = [
   { value: 'open', label: 'Open / no cover' },
-  { value: 'closed_accessible', label: 'Closed but easy to open' },
-  { value: 'sealed', label: 'Sealed (needs breaking)' },
+  { value: 'closed_accessible', label: 'Easy to open' },
+  { value: 'sealed', label: 'Sealed' },
   { value: 'unknown', label: 'Not sure' },
 ]
 
 const LAST_EMPTIED_OPTS: { value: LastEmptied; label: string }[] = [
-  { value: 'lt_6m', label: 'Less than 6 months ago' },
-  { value: '6_12m', label: '6–12 months ago' },
-  { value: '1_2y', label: '1–2 years ago' },
-  { value: 'gt_2y', label: 'More than 2 years ago' },
-  { value: 'never', label: 'Never emptied' },
+  { value: 'lt_6m', label: '< 6 months' },
+  { value: '6_12m', label: '6–12 months' },
+  { value: '1_2y', label: '1–2 years' },
+  { value: 'gt_2y', label: '2+ years' },
+  { value: 'never', label: 'Never' },
   { value: 'unknown', label: "Don't know" },
 ]
 
@@ -93,6 +93,7 @@ export function CustomerNewRequest() {
   const [quoting, setQuoting] = useState(false)
   const [locating, setLocating] = useState(false)
   const [locateError, setLocateError] = useState<string | null>(null)
+  const [showCoords, setShowCoords] = useState(false)
 
   // Site survey
   const [gateFits, setGateFits] = useState<GateFit | ''>('')
@@ -110,7 +111,6 @@ export function CustomerNewRequest() {
     if (regions.data && !regionId) setRegionId(regions.data[0]?.id)
   }, [regions.data, regionId])
 
-  // Auto-refresh quote when key inputs change
   useEffect(() => {
     if (!regionId) return
     const t = setTimeout(() => {
@@ -180,31 +180,30 @@ export function CustomerNewRequest() {
         preferred_time: preferredTime,
         someone_on_site: someoneOnSite,
       }),
-    // Pay-first: send the customer straight to the Pay page. The cascade
-    // only starts once payment succeeds.
     onSuccess: (sr) => navigate(`/customer/requests/${sr.id}/pay`),
   })
 
   const canSubmit = !!regionId && !!lat && !!lng && !!gatePhoto
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="max-w-5xl mx-auto space-y-8 pb-12">
+      {/* Header */}
       <div>
         <h1 className="font-heading text-3xl md:text-4xl font-extrabold text-charcoal">
           Request a pickup
         </h1>
-        <p className="mt-1 text-charcoal/60 max-w-xl">
-          Tell us where, what, and how much. We'll match you to the nearest
-          verified driver.
+        <p className="mt-1 text-charcoal/60 max-w-lg">
+          Fill in the details below and we'll match you to the nearest verified driver.
         </p>
       </div>
 
-      <div className="grid lg:grid-cols-[1fr_320px] gap-6 items-start">
-        {/* Left: form */}
-        <div className="space-y-6">
+      <div className="grid lg:grid-cols-[1fr_300px] gap-8 items-start">
+        {/* ── Left column: form steps ── */}
+        <div className="space-y-5">
+
           {/* Step 1: Waste type */}
-          <Section step="1" title="What needs hauling?">
-            <div className="grid sm:grid-cols-3 gap-3">
+          <Card step={1} title="What needs hauling?">
+            <div className="grid grid-cols-3 gap-3">
               {WASTE_TYPES.map((w) => (
                 <Tile
                   key={w.value}
@@ -216,42 +215,40 @@ export function CustomerNewRequest() {
                 />
               ))}
             </div>
-          </Section>
+          </Card>
 
-          {/* Step 2: Tier */}
-          <Section step="2" title="How big is the tank?">
-            <div className="grid sm:grid-cols-3 gap-3">
+          {/* Step 2: Volume tier */}
+          <Card step={2} title="How big is the tank?">
+            <div className="grid grid-cols-3 gap-3">
               {TIERS.map((t) => (
                 <Tile
                   key={t.value}
                   active={tier === t.value}
                   onClick={() => setTier(t.value)}
-                  icon={
-                    t.value === 'small' ? '🥤' : t.value === 'medium' ? '🪣' : '🛢️'
-                  }
+                  icon={t.icon}
                   title={t.label}
                   desc={t.range}
                 />
               ))}
             </div>
-          </Section>
+          </Card>
 
           {/* Step 3: Location */}
-          <Section step="3" title="Where are we picking up?">
+          <Card step={3} title="Where are we picking up?">
             <div className="space-y-4">
-              <div className="grid sm:grid-cols-2 gap-3">
-                <Field label="Town">
+              {/* Town + locate row */}
+              <div className="flex gap-3">
+                <div className="flex-1">
+                  <label className="text-xs font-semibold text-charcoal/60 uppercase tracking-wide mb-1 block">
+                    Town / Area
+                  </label>
                   <select
-                    className="input"
+                    className="input w-full"
                     value={regionId ?? ''}
                     onChange={(e) => setRegionId(Number(e.target.value))}
                   >
                     <option value="" disabled>
-                      {regions.isLoading
-                        ? 'Loading towns…'
-                        : regions.data?.length
-                          ? 'Select a town'
-                          : 'No towns available'}
+                      {regions.isLoading ? 'Loading…' : 'Select a town'}
                     </option>
                     {regions.data?.map((r) => (
                       <option key={r.id} value={r.id}>
@@ -259,172 +256,136 @@ export function CustomerNewRequest() {
                       </option>
                     ))}
                   </select>
-                </Field>
+                </div>
                 <div className="flex items-end">
                   <button
                     type="button"
                     onClick={locate}
                     disabled={locating}
-                    className="w-full border-2 border-primary text-primary font-semibold px-4 py-2.5 rounded-lg hover:bg-primary hover:text-white disabled:opacity-60 transition flex items-center justify-center gap-2"
+                    className="whitespace-nowrap border-2 border-primary text-primary font-semibold px-4 py-2.5 rounded-lg hover:bg-primary hover:text-white disabled:opacity-60 transition flex items-center gap-2 text-sm"
                   >
                     {locating ? '📡 Locating…' : '📍 Use my location'}
                   </button>
                 </div>
               </div>
+
               {locateError && (
-                <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
                   {locateError}
-                </div>
+                </p>
               )}
-              <div className="grid sm:grid-cols-2 gap-3">
-                <Field label="Latitude">
-                  <input
-                    className="input font-mono"
-                    value={lat}
-                    onChange={(e) => setLat(e.target.value)}
-                  />
-                </Field>
-                <Field label="Longitude">
-                  <input
-                    className="input font-mono"
-                    value={lng}
-                    onChange={(e) => setLng(e.target.value)}
-                  />
-                </Field>
-              </div>
-              <Field label="Address" hint="Optional but helpful">
+
+              <div>
+                <label className="text-xs font-semibold text-charcoal/60 uppercase tracking-wide mb-1 block">
+                  Address <span className="normal-case font-normal">(optional but helpful)</span>
+                </label>
                 <input
-                  className="input"
+                  className="input w-full"
                   value={address}
                   onChange={(e) => setAddress(e.target.value)}
                   placeholder="House 12, ABC Street, Tema"
                 />
-              </Field>
-              <Field label="Notes for driver" hint="Optional">
-                <textarea
-                  rows={2}
-                  className="input resize-none"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Gate code, driver instructions, parking info, etc."
-                />
-              </Field>
-            </div>
-          </Section>
-
-          {/* Step 4: Site survey */}
-          <Section step="4" title="Help your driver prepare">
-            <div className="space-y-5">
-              <div className="rounded-xl border border-charcoal/10 overflow-hidden bg-charcoal/[0.02]">
-                <div className="relative aspect-[16/8] bg-charcoal/5 grid place-items-center">
-                  <img
-                    src="/truck-reference.jpg"
-                    alt="Our vacuum truck"
-                    className="absolute inset-0 w-full h-full object-cover"
-                    onError={(e) => {
-                      (e.currentTarget as HTMLImageElement).style.display = 'none'
-                    }}
-                  />
-                  <span className="relative text-charcoal/50 text-sm font-semibold">
-                    🚛 Reference: our vacuum truck
-                  </span>
-                </div>
-                <div className="p-4">
-                  <div className="text-sm font-semibold text-charcoal mb-1">
-                    Looking at this truck — will it fit through your gate?
-                  </div>
-                  <div className="text-xs text-charcoal/60 mb-3">
-                    A standard vacuum truck is about 2.4 m wide and 3 m tall.
-                  </div>
-                  <Choices
-                    value={gateFits}
-                    onChange={(v) => setGateFits(v as GateFit)}
-                    options={GATE_FIT_OPTS}
-                  />
-                </div>
               </div>
 
-              <PhotoField
-                label="Photo of your gate"
-                hint="Required"
-                file={gatePhoto}
-                onFile={setGatePhoto}
-              />
-
-              <Field label="Where is the septic tank?">
-                <Choices
-                  value={tankLocation}
-                  onChange={(v) => setTankLocation(v as TankLocation)}
-                  options={TANK_LOCATION_OPTS}
+              <div>
+                <label className="text-xs font-semibold text-charcoal/60 uppercase tracking-wide mb-1 block">
+                  Notes for driver <span className="normal-case font-normal">(optional)</span>
+                </label>
+                <textarea
+                  rows={2}
+                  className="input w-full resize-none"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Gate code, parking info, access instructions…"
                 />
-              </Field>
+              </div>
 
-              <Field label="How close can the truck park to the tank?">
-                <Choices
-                  value={parkingDistance}
-                  onChange={(v) => setParkingDistance(v as ParkingDistance)}
-                  options={PARKING_OPTS}
-                />
-              </Field>
-
-              <Field label="What does the tank cover look like?">
-                <Choices
-                  value={tankCoverState}
-                  onChange={(v) => setTankCoverState(v as TankCoverState)}
-                  options={TANK_COVER_OPTS}
-                />
-              </Field>
-
-              <PhotoField
-                label="Photo of the tank cover / manhole"
-                hint="Optional"
-                file={tankCoverPhoto}
-                onFile={setTankCoverPhoto}
-              />
-
-              <Field label="When was it last emptied?">
-                <Choices
-                  value={lastEmptied}
-                  onChange={(v) => setLastEmptied(v as LastEmptied)}
-                  options={LAST_EMPTIED_OPTS}
-                />
-              </Field>
-
-              <Field label="Is the tank currently overflowing?">
-                <YesNo
-                  value={isOverflowing}
-                  onChange={setIsOverflowing}
-                />
-              </Field>
-
-              <Field label="Preferred time">
-                <Choices
-                  value={preferredTime}
-                  onChange={(v) => setPreferredTime(v as PreferredTime)}
-                  options={PREFERRED_TIME_OPTS}
-                />
-              </Field>
-
-              <Field label="Will someone be on site to open the gate?">
-                <YesNo
-                  value={someoneOnSite}
-                  onChange={setSomeoneOnSite}
-                />
-              </Field>
+              {/* Coordinates — collapsed by default */}
+              <button
+                type="button"
+                onClick={() => setShowCoords((v) => !v)}
+                className="text-xs text-charcoal/50 hover:text-primary transition"
+              >
+                {showCoords ? '▲ Hide coordinates' : '▼ Edit coordinates manually'}
+              </button>
+              {showCoords && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-semibold text-charcoal/60 uppercase tracking-wide mb-1 block">Latitude</label>
+                    <input className="input w-full font-mono" value={lat} onChange={(e) => setLat(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-charcoal/60 uppercase tracking-wide mb-1 block">Longitude</label>
+                    <input className="input w-full font-mono" value={lng} onChange={(e) => setLng(e.target.value)} />
+                  </div>
+                </div>
+              )}
             </div>
-          </Section>
+          </Card>
+
+          {/* Step 4: Site survey */}
+          <Card step={4} title="Help your driver prepare">
+            <p className="text-sm text-charcoal/60 -mt-1 mb-5">
+              These details help us send the right truck and avoid surprises on the day.
+            </p>
+
+            <div className="space-y-6">
+              {/* Group A: Gate & access */}
+              <SurveyGroup label="Gate & access">
+                <SurveyRow label="Will the truck fit through your gate?" hint="Standard truck: ~2.4 m wide, 3 m tall">
+                  <Choices value={gateFits} onChange={(v) => setGateFits(v as GateFit)} options={GATE_FIT_OPTS} />
+                </SurveyRow>
+                <SurveyRow label="Photo of your gate" hint="Required">
+                  <PhotoField file={gatePhoto} onFile={setGatePhoto} />
+                </SurveyRow>
+                <SurveyRow label="How close can the truck park to the tank?">
+                  <Choices value={parkingDistance} onChange={(v) => setParkingDistance(v as ParkingDistance)} options={PARKING_OPTS} />
+                </SurveyRow>
+                <SurveyRow label="Will someone be on site to open the gate?">
+                  <YesNo value={someoneOnSite} onChange={setSomeoneOnSite} />
+                </SurveyRow>
+              </SurveyGroup>
+
+              {/* Group B: Tank details */}
+              <SurveyGroup label="Tank details">
+                <SurveyRow label="Where is the septic / waste tank?">
+                  <Choices value={tankLocation} onChange={(v) => setTankLocation(v as TankLocation)} options={TANK_LOCATION_OPTS} />
+                </SurveyRow>
+                <SurveyRow label="Tank cover condition">
+                  <Choices value={tankCoverState} onChange={(v) => setTankCoverState(v as TankCoverState)} options={TANK_COVER_OPTS} />
+                </SurveyRow>
+                <SurveyRow label="Photo of tank cover / manhole" hint="Optional">
+                  <PhotoField file={tankCoverPhoto} onFile={setTankCoverPhoto} />
+                </SurveyRow>
+                <SurveyRow label="When was the tank last emptied?">
+                  <Choices value={lastEmptied} onChange={(v) => setLastEmptied(v as LastEmptied)} options={LAST_EMPTIED_OPTS} />
+                </SurveyRow>
+                <SurveyRow label="Is the tank currently overflowing?">
+                  <YesNo value={isOverflowing} onChange={setIsOverflowing} />
+                </SurveyRow>
+              </SurveyGroup>
+
+              {/* Group C: Scheduling */}
+              <SurveyGroup label="Scheduling">
+                <SurveyRow label="Preferred time of day">
+                  <Choices value={preferredTime} onChange={(v) => setPreferredTime(v as PreferredTime)} options={PREFERRED_TIME_OPTS} />
+                </SurveyRow>
+              </SurveyGroup>
+            </div>
+          </Card>
         </div>
 
-        {/* Right: live quote */}
-        <div className="lg:sticky lg:top-6">
+        {/* ── Right column: quote + submit ── */}
+        <div className="lg:sticky lg:top-6 space-y-3">
+          {/* Price card */}
           <div className="bg-gradient-to-br from-primary to-[#084d29] text-white rounded-2xl shadow-lg overflow-hidden">
-            <div className="p-6">
-              <div className="flex items-center justify-between">
-                <div className="text-xs uppercase tracking-widest text-accent font-bold">
+            <div className="p-5">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-[11px] uppercase tracking-widest text-accent font-bold">
                   Estimated price
-                </div>
+                </span>
                 {quoting && (
-                  <span className="text-[10px] uppercase tracking-wider text-white/60 flex items-center gap-1">
+                  <span className="text-[10px] text-white/60 flex items-center gap-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
                     Updating
                   </span>
@@ -433,49 +394,60 @@ export function CustomerNewRequest() {
 
               {quote ? (
                 <>
-                  <div className="mt-3 font-heading text-4xl font-extrabold">
+                  <div className="font-heading text-4xl font-extrabold mt-1">
                     GHS {quote.total}
                   </div>
-                  <div className="mt-1 text-xs text-white/70">
-                    Estimated · final price confirmed at booking
+                  <div className="text-[11px] text-white/60 mt-0.5 mb-4">
+                    Estimate · confirmed at booking
                   </div>
-
-                  <div className="mt-5 space-y-2 text-sm">
-                    <Row label="Base fee" value={`GHS ${quote.base_fee}`} />
-                    <Row
+                  <div className="space-y-2 text-sm border-t border-white/10 pt-4">
+                    <PriceRow label="Base fee" value={`GHS ${quote.base_fee}`} />
+                    <PriceRow
                       label={`Distance (${Number(quote.distance_km).toFixed(1)} km)`}
                       value={`GHS ${quote.distance_fee}`}
                     />
-                    <Row label="Tank size fee" value={`GHS ${quote.tier_fee}`} />
+                    <PriceRow label="Tank size fee" value={`GHS ${quote.tier_fee}`} />
                   </div>
                 </>
               ) : (
-                <div className="mt-4 text-sm text-white/70">
-                  Pick a town and tank size to see your estimate.
+                <div className="mt-3 text-sm text-white/60 leading-relaxed">
+                  Select a town and tank size above to see your price estimate.
                 </div>
               )}
             </div>
 
-            <div className="px-6 py-4 bg-black/20 border-t border-white/10">
+            <div className="px-5 py-4 bg-black/20 border-t border-white/10">
               <button
                 type="button"
                 disabled={submit.isPending || !canSubmit}
                 onClick={() => submit.mutate()}
-                className="w-full bg-accent text-charcoal font-bold py-3 rounded-lg hover:brightness-110 disabled:opacity-60 transition shadow-sm"
+                className="w-full bg-accent text-charcoal font-bold py-3.5 rounded-xl hover:brightness-110 disabled:opacity-50 transition shadow-sm text-base"
               >
-                {submit.isPending ? 'Submitting…' : 'Confirm & request driver →'}
+                {submit.isPending ? 'Submitting…' : 'Confirm & find a driver →'}
               </button>
+              {!canSubmit && !submit.isPending && (
+                <p className="mt-2 text-center text-[11px] text-white/50">
+                  {!gatePhoto ? 'Gate photo required to continue' : 'Fill in your location to continue'}
+                </p>
+              )}
               {submit.isError && (
-                <div className="mt-2 text-xs text-red-200">
-                  Could not create request. Try again.
-                </div>
+                <p className="mt-2 text-center text-xs text-red-300">
+                  Could not create request. Please try again.
+                </p>
               )}
             </div>
           </div>
 
-          <div className="mt-3 text-xs text-charcoal/60 leading-relaxed px-1">
-            🛡️ All drivers are ID-verified and EPA-permitted. You'll only be
-            charged after the request is confirmed.
+          {/* Trust badge */}
+          <div className="bg-white border border-charcoal/8 rounded-xl p-4 text-xs text-charcoal/60 leading-relaxed space-y-1.5">
+            <div className="flex items-start gap-2">
+              <span>🛡️</span>
+              <span>All drivers are ID-verified and EPA-permitted.</span>
+            </div>
+            <div className="flex items-start gap-2">
+              <span>💳</span>
+              <span>You're only charged after a driver is confirmed.</span>
+            </div>
           </div>
         </div>
       </div>
@@ -483,25 +455,68 @@ export function CustomerNewRequest() {
   )
 }
 
-function Section({
+// ── Sub-components ────────────────────────────────────────────────────────────
+
+function Card({
   step,
   title,
   children,
 }: {
-  step: string
+  step: number
   title: string
   children: React.ReactNode
 }) {
   return (
-    <section className="bg-white border border-charcoal/5 rounded-2xl shadow-sm p-6">
-      <div className="flex items-center gap-3 mb-4">
-        <div className="w-8 h-8 rounded-lg bg-primary text-white grid place-items-center font-heading font-extrabold">
+    <section className="bg-white border border-charcoal/8 rounded-2xl shadow-sm overflow-hidden">
+      <div className="flex items-center gap-3 px-6 py-4 border-b border-charcoal/6 bg-charcoal/[0.015]">
+        <div className="w-7 h-7 rounded-lg bg-primary text-white grid place-items-center font-heading font-extrabold text-sm flex-shrink-0">
           {step}
         </div>
-        <h2 className="font-heading font-bold text-lg">{title}</h2>
+        <h2 className="font-heading font-bold text-base text-charcoal">{title}</h2>
+      </div>
+      <div className="p-6">{children}</div>
+    </section>
+  )
+}
+
+function SurveyGroup({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <div className="text-[11px] font-bold uppercase tracking-widest text-primary/70 mb-3">
+        {label}
+      </div>
+      <div className="space-y-4 pl-0">
+        {children}
+      </div>
+    </div>
+  )
+}
+
+function SurveyRow({
+  label,
+  hint,
+  children,
+}: {
+  label: string
+  hint?: string
+  children: React.ReactNode
+}) {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-semibold text-charcoal">{label}</span>
+        {hint && (
+          <span
+            className={`text-[10px] uppercase font-bold tracking-wide ${
+              hint === 'Required' ? 'text-red-500' : 'text-charcoal/40'
+            }`}
+          >
+            {hint}
+          </span>
+        )}
       </div>
       {children}
-    </section>
+    </div>
   )
 }
 
@@ -525,41 +540,19 @@ function Tile({
       className={`text-left p-4 rounded-xl border-2 transition ${
         active
           ? 'border-primary bg-primary/5 shadow-sm'
-          : 'border-charcoal/10 hover:border-charcoal/30'
+          : 'border-charcoal/10 hover:border-charcoal/25'
       }`}
     >
       <div className="text-2xl">{icon}</div>
-      <div className="mt-2 font-bold text-charcoal text-sm">{title}</div>
-      <div className="text-xs text-charcoal/60">{desc}</div>
+      <div className="mt-2 font-bold text-charcoal text-sm leading-tight">{title}</div>
+      <div className="text-xs text-charcoal/55 mt-0.5">{desc}</div>
     </button>
   )
 }
 
-function Field({
-  label,
-  hint,
-  children,
-}: {
-  label: string
-  hint?: string
-  children: React.ReactNode
-}) {
+function PriceRow({ label, value }: { label: string; value: string }) {
   return (
-    <label className="block">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-semibold text-charcoal/80">{label}</span>
-        {hint && (
-          <span className="text-[10px] uppercase text-charcoal/50">{hint}</span>
-        )}
-      </div>
-      <div className="mt-1.5">{children}</div>
-    </label>
-  )
-}
-
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex justify-between text-white/85">
+    <div className="flex justify-between text-white/80">
       <span>{label}</span>
       <span className="font-semibold text-white">{value}</span>
     </div>
@@ -584,10 +577,10 @@ function Choices<T extends string>({
             key={o.value}
             type="button"
             onClick={() => onChange(o.value)}
-            className={`px-3 py-2 rounded-lg text-sm font-semibold border-2 transition ${
+            className={`px-3 py-1.5 rounded-lg text-sm font-semibold border-2 transition ${
               active
                 ? 'border-primary bg-primary/10 text-primary'
-                : 'border-charcoal/10 text-charcoal/70 hover:border-charcoal/30'
+                : 'border-charcoal/10 text-charcoal/65 hover:border-charcoal/25'
             }`}
           >
             {o.label}
@@ -620,7 +613,7 @@ function YesNo({
             className={`flex-1 px-3 py-2 rounded-lg text-sm font-semibold border-2 transition ${
               active
                 ? 'border-primary bg-primary/10 text-primary'
-                : 'border-charcoal/10 text-charcoal/70 hover:border-charcoal/30'
+                : 'border-charcoal/10 text-charcoal/65 hover:border-charcoal/25'
             }`}
           >
             {o.label}
@@ -632,58 +625,46 @@ function YesNo({
 }
 
 function PhotoField({
-  label,
-  hint,
   file,
   onFile,
 }: {
-  label: string
-  hint?: string
   file: File | null
   onFile: (f: File | null) => void
 }) {
   const previewUrl = file ? URL.createObjectURL(file) : null
   return (
-    <div>
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-semibold text-charcoal/80">{label}</span>
-        {hint && (
-          <span className="text-[10px] uppercase text-charcoal/50">{hint}</span>
+    <div className="flex items-center gap-3">
+      <label className="flex-1 cursor-pointer rounded-xl border-2 border-dashed border-charcoal/20 hover:border-primary/50 px-4 py-4 text-center text-sm text-charcoal/55 transition block">
+        <input
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={(e) => onFile(e.target.files?.[0] ?? null)}
+        />
+        {file ? (
+          <span className="font-semibold text-primary">📷 {file.name}</span>
+        ) : (
+          <span>📷 Tap to take photo or upload</span>
         )}
-      </div>
-      <div className="mt-1.5 flex items-start gap-3">
-        <label className="flex-1 cursor-pointer rounded-xl border-2 border-dashed border-charcoal/20 hover:border-primary/50 px-4 py-6 text-center text-sm text-charcoal/60 transition block">
-          <input
-            type="file"
-            accept="image/*"
-            capture="environment"
-            className="hidden"
-            onChange={(e) => onFile(e.target.files?.[0] ?? null)}
+      </label>
+      {previewUrl && (
+        <div className="relative flex-shrink-0">
+          <img
+            src={previewUrl}
+            alt="preview"
+            className="w-16 h-16 object-cover rounded-lg border border-charcoal/10"
           />
-          {file ? (
-            <span className="font-semibold text-primary">📷 {file.name}</span>
-          ) : (
-            <span>📷 Tap to take photo or upload</span>
-          )}
-        </label>
-        {previewUrl && (
-          <div className="relative">
-            <img
-              src={previewUrl}
-              alt="preview"
-              className="w-20 h-20 object-cover rounded-lg border border-charcoal/10"
-            />
-            <button
-              type="button"
-              onClick={() => onFile(null)}
-              className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-red-600 text-white text-xs grid place-items-center"
-              aria-label="Remove"
-            >
-              ×
-            </button>
-          </div>
-        )}
-      </div>
+          <button
+            type="button"
+            onClick={() => onFile(null)}
+            className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-600 text-white text-xs grid place-items-center"
+            aria-label="Remove"
+          >
+            ×
+          </button>
+        </div>
+      )}
     </div>
   )
 }
