@@ -14,6 +14,8 @@ import { CustomerPay } from '@/pages/customer/Pay'
 import { CustomerPaymentReturn } from '@/pages/customer/PaymentReturn'
 import { DriverDashboard } from '@/pages/driver/Dashboard'
 import { DriverOnboard } from '@/pages/driver/Onboard'
+import { DriverJobHistory } from '@/pages/driver/JobHistory'
+import { DriverJobDetail } from '@/pages/driver/JobDetail'
 import { FleetDashboard } from '@/pages/fleet/Dashboard'
 import { FleetSignup } from '@/pages/fleet/Signup'
 import { FleetDrivers } from '@/pages/fleet/Drivers'
@@ -40,6 +42,7 @@ const customerNav = [
 
 const driverNav = [
   { to: '/driver', label: 'Dashboard' },
+  { to: '/driver/history', label: 'History' },
   { to: '/driver/onboard', label: 'Profile & docs' },
   { to: '/driver/security', label: 'Security' },
 ]
@@ -101,6 +104,8 @@ export function AppRoutes() {
         }
       >
         <Route index element={<DriverDashboard />} />
+        <Route path="history" element={<DriverJobHistory />} />
+        <Route path="history/:id" element={<DriverJobDetail />} />
         <Route path="onboard" element={<DriverOnboard />} />
         <Route path="security" element={<AccountSecurity />} />
       </Route>

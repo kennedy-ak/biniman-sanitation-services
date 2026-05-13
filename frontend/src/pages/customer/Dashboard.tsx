@@ -1,6 +1,8 @@
-import { Link } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useEffect } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { fetchMyRequests } from '@/api/requests'
+import { verifyPayment } from '@/api/payments'
 import { useAuth } from '@/store/auth'
 import type { RequestStatus, ServiceRequest } from '@/types'
 
@@ -32,6 +34,27 @@ function formatDate(s: string) {
 
 export function CustomerDashboard() {
   const user = useAuth((s) => s.user)
+  const navigate = useNavigate()
+
+  // Paystack callback redirects here with ?reference=...&trxref=...
+  // Verify the transaction server-side and forward to the request detail page.
+  const [params, setParams] = useSearchParams()
+  const paystackRef = params.get('reference') ?? params.get('trxref')
+  const verifyMut = useMutation({
+    mutationFn: (ref: string) => verifyPayment(ref),
+    onSuccess: (p) => {
+      setParams({}, { replace: true })
+      navigate(`/customer/requests/${p.request}`, { replace: true })
+    },
+    onError: () => setParams({}, { replace: true }),
+  })
+  useEffect(() => {
+    if (paystackRef && !verifyMut.isPending && !verifyMut.isSuccess) {
+      verifyMut.mutate(paystackRef)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paystackRef])
+
   const list = useQuery({ queryKey: ['requests', 'mine'], queryFn: fetchMyRequests })
   const requests = list.data ?? []
   const active = requests.find((r) => ACTIVE_STATUSES.includes(r.status))

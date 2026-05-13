@@ -33,7 +33,7 @@ export function CustomerPay() {
         return
       }
       if (p.paystack_authorization_url && !p.paystack_authorization_url.includes('mock')) {
-        window.open(p.paystack_authorization_url, '_blank', 'noopener')
+        window.location.href = p.paystack_authorization_url
       }
     },
     onError: (err: Error & { response?: { data?: { detail?: string } } }) => {
@@ -224,11 +224,10 @@ function PendingState({
         </div>
         <div>
           <h3 className="font-heading font-bold text-charcoal">
-            Complete payment in the secure window
+            Redirecting to secure payment…
           </h3>
           <p className="mt-1 text-sm text-charcoal/70">
-            Paystack opened in a new tab. After paying, click "I've paid" so
-            we can confirm and release the driver's payout.
+            You will be redirected to Paystack. After paying you will return here automatically.
           </p>
         </div>
       </div>
@@ -236,11 +235,9 @@ function PendingState({
         {authUrl && (
           <a
             href={authUrl}
-            target="_blank"
-            rel="noopener"
             className="bg-primary text-white font-bold px-5 py-2.5 rounded-lg hover:bg-primary/90 transition"
           >
-            Open Paystack →
+            Go to Paystack →
           </a>
         )}
         <button

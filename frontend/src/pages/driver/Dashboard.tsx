@@ -22,6 +22,26 @@ function navigateUrl(lat: string | number, lng: string | number): string {
   return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`
 }
 
+function playOfferAlert() {
+  try {
+    const ctx = new AudioContext()
+    const times = [0, 0.18, 0.36]
+    times.forEach((t) => {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.frequency.value = 880
+      gain.gain.setValueAtTime(0.4, ctx.currentTime + t)
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + t + 0.15)
+      osc.start(ctx.currentTime + t)
+      osc.stop(ctx.currentTime + t + 0.15)
+    })
+  } catch {
+    // AudioContext not available — silent fallback
+  }
+}
+
 const NEXT_STATUS: Record<RequestStatus, RequestStatus | null> = {
   accepted: 'en_route',
   en_route: 'arrived',
@@ -49,14 +69,14 @@ export function DriverDashboard() {
     queryKey: ['driver', 'offer'],
     queryFn: fetchCurrentOffer,
     enabled: isApproved && !!driver.data?.is_online,
-    refetchInterval: 5000,
+    refetchInterval: 3000,
   })
 
   const activeQuery = useQuery({
     queryKey: ['driver', 'active'],
     queryFn: fetchActiveRequest,
     enabled: isApproved,
-    refetchInterval: 8000,
+    refetchInterval: 3000,
   })
 
   const pendingRatingQuery = useQuery({
@@ -85,6 +105,7 @@ export function DriverDashboard() {
   useEffect(() => {
     if (wsEvent?.type === 'offer.new') {
       qc.invalidateQueries({ queryKey: ['driver', 'offer'] })
+      playOfferAlert()
     }
   }, [wsEvent, qc])
 
@@ -119,20 +140,20 @@ export function DriverDashboard() {
   const acceptMut = useMutation({
     mutationFn: (assignmentId: number) => acceptOffer(assignmentId),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['driver', 'offer'] })
-      qc.invalidateQueries({ queryKey: ['driver', 'active'] })
+      qc.refetchQueries({ queryKey: ['driver', 'offer'] })
+      qc.refetchQueries({ queryKey: ['driver', 'active'] })
     },
   })
 
   const declineMut = useMutation({
     mutationFn: (assignmentId: number) => declineOffer(assignmentId),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['driver', 'offer'] }),
+    onSuccess: () => qc.refetchQueries({ queryKey: ['driver', 'offer'] }),
   })
 
   const statusMut = useMutation({
     mutationFn: ({ id, next }: { id: number; next: RequestStatus }) =>
       transitionStatus(id, next),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['driver', 'active'] }),
+    onSuccess: () => qc.refetchQueries({ queryKey: ['driver', 'active'] }),
   })
 
   if (driver.isLoading) return <p>Loading…</p>
@@ -269,7 +290,8 @@ export function DriverDashboard() {
       )}
 
       {!active && offer && (
-        <section className="mt-6 card border-accent/60 bg-accent/10">
+        <section className="mt-6 card border-accent/60 bg-accent/10 ring-2 ring-accent animate-pulse-once relative">
+          <div className="absolute -top-2 -right-2 w-4 h-4 rounded-full bg-accent animate-ping" />
           <div className="text-xs uppercase tracking-wider text-accent font-bold">
             Incoming offer
           </div>
@@ -283,9 +305,7 @@ export function DriverDashboard() {
           <p className="mt-2 text-sm">
             Quote: <span className="font-bold">GHS {offer.request.quote_total}</span>
           </p>
-          <p className="text-xs text-charcoal/50">
-            Expires at {new Date(offer.expires_at).toLocaleTimeString()}
-          </p>
+          <OfferCountdown expiresAt={offer.expires_at} />
           <SiteSurvey req={offer.request} />
           <div className="mt-4">
             <DriverRouteMap
@@ -345,7 +365,27 @@ export function DriverDashboard() {
           You're offline. Toggle online above to start receiving jobs.
         </p>
       )}
+
     </div>
+  )
+}
+
+function OfferCountdown({ expiresAt }: { expiresAt: string }) {
+  const [secs, setSecs] = useState(() =>
+    Math.max(0, Math.round((new Date(expiresAt).getTime() - Date.now()) / 1000)),
+  )
+  useEffect(() => {
+    const iv = setInterval(() => {
+      setSecs(Math.max(0, Math.round((new Date(expiresAt).getTime() - Date.now()) / 1000)))
+    }, 1000)
+    return () => clearInterval(iv)
+  }, [expiresAt])
+
+  const urgent = secs <= 30
+  return (
+    <p className={`text-sm font-semibold mt-1 ${urgent ? 'text-red-600 animate-pulse' : 'text-charcoal/60'}`}>
+      ⏱ {secs > 0 ? `${secs}s to accept` : 'Offer expired'}
+    </p>
   )
 }
 
@@ -434,42 +474,49 @@ function SiteSurvey({ req }: { req: ServiceRequest }) {
   if (facts.length === 0 && !req.gate_photo && !req.tank_cover_photo) return null
 
   return (
-    <div className="mt-3 rounded-lg border border-charcoal/10 bg-white/60 p-3">
-      <div className="text-[11px] uppercase tracking-wider font-bold text-charcoal/60 mb-2">
+    <div className="mt-3 rounded-lg border border-white/20 bg-white p-3">
+      <div className="text-[11px] uppercase tracking-wider font-bold text-charcoal/50 mb-2">
         Site survey
       </div>
       {facts.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 mb-2">
+        <div className="flex flex-wrap gap-1.5 mb-3">
           {facts.map((f) => (
             <span
               key={f.k}
-              className="text-xs px-2 py-1 rounded-full bg-charcoal/5 text-charcoal/80"
+              className="text-xs px-2.5 py-1 rounded-full bg-charcoal/8 border border-charcoal/10 text-charcoal"
             >
-              <span className="font-semibold text-charcoal/60">{f.k}:</span> {f.v}
+              <span className="font-semibold text-charcoal/50">{f.k}:</span>{' '}
+              <span className="font-medium">{f.v}</span>
             </span>
           ))}
         </div>
       )}
       {(req.gate_photo || req.tank_cover_photo) && (
-        <div className="flex gap-2">
+        <div className="flex gap-3">
           {req.gate_photo && (
-            <a href={req.gate_photo} target="_blank" rel="noreferrer">
+            <a href={req.gate_photo} target="_blank" rel="noreferrer" className="block flex-shrink-0">
               <img
                 src={req.gate_photo}
-                alt="Gate"
-                className="w-20 h-20 object-cover rounded-md border border-charcoal/10"
+                alt="Gate photo"
+                className="w-24 h-24 object-cover rounded-lg border border-charcoal/10 bg-charcoal/5"
+                onError={(e) => {
+                  (e.currentTarget as HTMLImageElement).style.display = 'none'
+                }}
               />
-              <div className="text-[10px] text-center text-charcoal/60 mt-0.5">Gate</div>
+              <div className="text-[10px] text-center text-charcoal/50 mt-1 font-medium">Gate</div>
             </a>
           )}
           {req.tank_cover_photo && (
-            <a href={req.tank_cover_photo} target="_blank" rel="noreferrer">
+            <a href={req.tank_cover_photo} target="_blank" rel="noreferrer" className="block flex-shrink-0">
               <img
                 src={req.tank_cover_photo}
-                alt="Tank"
-                className="w-20 h-20 object-cover rounded-md border border-charcoal/10"
+                alt="Tank cover photo"
+                className="w-24 h-24 object-cover rounded-lg border border-charcoal/10 bg-charcoal/5"
+                onError={(e) => {
+                  (e.currentTarget as HTMLImageElement).style.display = 'none'
+                }}
               />
-              <div className="text-[10px] text-center text-charcoal/60 mt-0.5">Tank</div>
+              <div className="text-[10px] text-center text-charcoal/50 mt-1 font-medium">Tank</div>
             </a>
           )}
         </div>

@@ -200,6 +200,48 @@ def cancel_request(request, request_id: int):
     return Response(ServiceRequestSerializer(sr).data)
 
 
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def retry_request(request, request_id: int):
+    """Re-trigger the matching cascade for an UNFULFILLED request.
+
+    The customer already paid, so we skip payment and go straight back to
+    PENDING then run the first cascade dispatch synchronously so the response
+    already reflects whether a driver was found.
+    """
+    from requests_app.tasks import _dispatch_next_batch
+
+    sr = get_object_or_404(ServiceRequest, pk=request_id)
+    if sr.customer_id != request.user.id:
+        raise PermissionDenied()
+    if sr.status != RequestStatus.UNFULFILLED.value:
+        raise ValidationError("Only unfulfilled requests can be retried.")
+
+    with transaction.atomic():
+        sr.status = RequestStatus.PENDING.value
+        sr.driver = None
+        sr.accepted_at = None
+        sr.en_route_at = None
+        sr.arrived_at = None
+        sr.completed_at = None
+        sr.save(update_fields=[
+            "status", "driver", "accepted_at", "en_route_at",
+            "arrived_at", "completed_at",
+        ])
+        # Delete all previous assignments so _drivers_already_invited()
+        # starts fresh — without this, drivers who timed out are permanently
+        # excluded and the retry cascade goes UNFULFILLED immediately.
+        sr.assignments.all().delete()
+
+    # Run the first dispatch inline so the response reflects the real status.
+    # _dispatch_next_batch handles PENDING→ASSIGNED transition and schedules
+    # the Celery timeout task for the new batch.
+    sr.refresh_from_db()
+    _dispatch_next_batch(sr)
+    sr.refresh_from_db()
+    return Response(ServiceRequestSerializer(sr).data)
+
+
 # ---------- Driver endpoints ----------
 
 
@@ -334,6 +376,26 @@ def driver_accept(request, assignment_id: int):
 
     for sibling in superseded:
         push_offer_cancelled(sibling)
+
+    # Cancel this driver's pending offers on OTHER requests so those requests
+    # immediately re-cascade instead of waiting for their timeout.
+    other_pending = list(
+        RequestAssignment.objects.select_related("request")
+        .filter(driver=driver, outcome=AssignmentOutcome.PENDING)
+        .exclude(pk=offer.pk)
+    )
+    if other_pending:
+        RequestAssignment.objects.filter(
+            pk__in=[o.pk for o in other_pending]
+        ).update(outcome=AssignmentOutcome.SUPERSEDED, decided_at=timezone.now())
+        from requests_app.tasks import _dispatch_next_batch
+        for other in other_pending:
+            other.request.refresh_from_db()
+            if other.request.status == RequestStatus.ASSIGNED.value:
+                other.request.status = RequestStatus.PENDING.value
+                other.request.save(update_fields=["status"])
+                _dispatch_next_batch(other.request)
+
     push_request_status(sr)
     return Response(ServiceRequestSerializer(sr).data)
 
@@ -413,3 +475,15 @@ def driver_pending_rating(request):
         if not sr.ratings.filter(rated_by=request.user).exists():
             return Response(ServiceRequestSerializer(sr).data)
     return Response(None)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated, IsDriver])
+def driver_job_history(request):
+    """Completed, cancelled and unfulfilled jobs for the driver, newest first."""
+    driver = _require_driver(request.user)
+    qs = ServiceRequest.objects.filter(
+        driver=driver,
+        status__in=[RequestStatus.COMPLETED.value, RequestStatus.CANCELLED.value],
+    ).order_by("-created_at")[:50]
+    return Response(ServiceRequestSerializer(qs, many=True).data)

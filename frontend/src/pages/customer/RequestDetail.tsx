@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useLocation, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { cancelRequest, fetchRequest } from '@/api/requests'
+import { cancelRequest, fetchMyRequests, fetchRequest, retryRequest } from '@/api/requests'
 import { useRequestSocket } from '@/hooks/useRequestSocket'
 import { fetchUserSummary } from '@/api/ratings'
 import { RatingForm, Stars } from '@/components/RatingForm'
@@ -37,6 +37,22 @@ const STATUS_TONE: Record<RequestStatus, string> = {
 export function CustomerRequestDetail() {
   const params = useParams<{ id: string }>()
   const id = Number(params.id)
+  const location = useLocation()
+  const stateSeq: number | undefined = (location.state as { seq?: number } | null)?.seq
+
+  // Fallback: derive seq from cached list if navigated directly (no state)
+  const listQuery = useQuery({
+    queryKey: ['requests', 'mine'],
+    queryFn: fetchMyRequests,
+    enabled: stateSeq == null,
+    staleTime: 60_000,
+  })
+  const seq = stateSeq ?? (() => {
+    if (!listQuery.data) return null
+    const sorted = [...listQuery.data].sort((a, b) => +new Date(a.created_at) - +new Date(b.created_at))
+    const idx = sorted.findIndex((r) => r.id === id)
+    return idx >= 0 ? idx + 1 : null
+  })()
   const qc = useQueryClient()
   const [showCancel, setShowCancel] = useState(false)
   const [cancelReason, setCancelReason] = useState('')
@@ -45,6 +61,11 @@ export function CustomerRequestDetail() {
     queryKey: ['request', id],
     queryFn: () => fetchRequest(id),
     enabled: Number.isFinite(id),
+    refetchInterval: (query) => {
+      const status = query.state.data?.status
+      const terminal = status === 'completed' || status === 'cancelled' || status === 'unfulfilled'
+      return terminal ? false : 3000
+    },
   })
 
   const { latest, driverLoc } = useRequestSocket(Number.isFinite(id) ? id : null)
@@ -72,11 +93,33 @@ export function CustomerRequestDetail() {
     },
   })
 
+  const [retryError, setRetryError] = useState<string | null>(null)
+  const retryMut = useMutation({
+    mutationFn: () => retryRequest(id),
+    onSuccess: (data) => {
+      setRetryError(null)
+      qc.setQueryData(['request', id], data)
+    },
+    onError: (err: { response?: { status?: number; data?: unknown } }) => {
+      const data = err.response?.data
+      const detail =
+        typeof data === 'object' && data !== null && 'detail' in data
+          ? String((data as { detail: unknown }).detail)
+          : typeof data === 'string'
+            ? data
+            : `Error ${err.response?.status ?? 'unknown'}`
+      setRetryError(detail)
+    },
+  })
+
   if (reqQuery.isLoading) return <p className="text-charcoal/60">Loading…</p>
   if (!reqQuery.data) return <p className="text-charcoal/60">Not found.</p>
 
   const sr = reqQuery.data
-  const currentStepIdx = STATUS_STEPS.findIndex((s) => s.value === sr.status)
+  // When completed, push index past the last step so every step renders as done (green ✓).
+  const currentStepIdx = sr.status === 'completed'
+    ? STATUS_STEPS.length
+    : STATUS_STEPS.findIndex((s) => s.value === sr.status)
   const isTerminal =
     sr.status === 'completed' || sr.status === 'cancelled' || sr.status === 'unfulfilled'
   const showMap = sr.driver && ['accepted', 'en_route', 'arrived'].includes(sr.status)
@@ -99,7 +142,7 @@ export function CustomerRequestDetail() {
           </div>
           <div className="flex-1 min-w-0">
             <div className="text-xs uppercase tracking-widest text-accent font-bold">
-              Request #{sr.id}
+              {seq != null ? `Request ${seq}` : `Request #${sr.id}`}
             </div>
             <h1 className="mt-1 font-heading text-3xl md:text-4xl font-extrabold capitalize">
               {sr.waste_type.replace('_', ' ')} · {sr.volume_tier} tank
@@ -131,7 +174,7 @@ export function CustomerRequestDetail() {
       </div>
 
       {/* Pay CTA — pay-first flow: shown until payment succeeds. */}
-      {sr.payment_status !== 'succeeded' && !isTerminal && (
+      {(sr.payment_status == null || sr.payment_status === 'pending') && !isTerminal && (
         <Link
           to={`/customer/requests/${sr.id}/pay`}
           className="block bg-gradient-to-r from-accent to-amber-300 text-charcoal rounded-2xl p-5 shadow-sm hover:shadow-md transition group"
@@ -173,8 +216,22 @@ export function CustomerRequestDetail() {
             <div className="text-sm mt-1">
               {sr.status === 'cancelled'
                 ? sr.cancel_reason || 'No reason provided.'
-                : 'No drivers were available in your area. Please try again.'}
+                : 'No drivers were available in your area.'}
             </div>
+            {sr.status === 'unfulfilled' && (
+              <div className="mt-3">
+                <button
+                  onClick={() => retryMut.mutate()}
+                  disabled={retryMut.isPending}
+                  className="inline-flex items-center gap-2 bg-primary text-white font-bold px-5 py-2.5 rounded-lg hover:bg-primary/90 transition disabled:opacity-60"
+                >
+                  {retryMut.isPending ? 'Searching…' : '🔄 Find me a driver'}
+                </button>
+                {retryError && (
+                  <p className="mt-2 text-sm text-red-700">{retryError}</p>
+                )}
+              </div>
+            )}
           </div>
         ) : (
           <ol className="mt-5 relative">
