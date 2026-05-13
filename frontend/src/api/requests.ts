@@ -78,6 +78,11 @@ export async function cancelRequest(id: number, reason?: string) {
 
 // ----- Driver -----
 
+// Backend DecimalField(max_digits=10, decimal_places=7) — round before sending.
+function trimCoord(n: number | undefined): number | undefined {
+  return n === undefined ? undefined : Number(n.toFixed(7))
+}
+
 export async function setDriverOnline(payload: {
   is_online: boolean
   lat?: number
@@ -85,13 +90,20 @@ export async function setDriverOnline(payload: {
 }) {
   const { data } = await api.post<{ is_online: boolean }>(
     '/requests/driver/online/',
-    payload,
+    {
+      is_online: payload.is_online,
+      lat: trimCoord(payload.lat),
+      lng: trimCoord(payload.lng),
+    },
   )
   return data
 }
 
 export async function pingDriverLocation(lat: number, lng: number) {
-  await api.post('/requests/driver/ping/', { lat, lng })
+  await api.post('/requests/driver/ping/', {
+    lat: trimCoord(lat),
+    lng: trimCoord(lng),
+  })
 }
 
 export async function fetchCurrentOffer() {
