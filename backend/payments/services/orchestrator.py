@@ -28,7 +28,9 @@ def initialize_payment_for_request(request: ServiceRequest) -> Payment:
     if hasattr(request, "payment"):
         return request.payment
 
-    email = request.customer.email or f"{request.customer.phone.lstrip('+')}@liquidgo.local"
+    # Paystack rejects .local TLDs; use a real-looking domain for receipts.
+    # Customers without an email get a deterministic placeholder address.
+    email = request.customer.email or f"{request.customer.phone.lstrip('+')}@biniman.vendlyghana.space"
     init = paystack.initialize_transaction(
         email=email, amount_ghs=request.quote_total
     )
