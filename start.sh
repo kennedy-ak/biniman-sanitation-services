@@ -18,6 +18,16 @@ FRONTEND="$ROOT/frontend"
 LOGDIR="$ROOT/logs"
 mkdir -p "$LOGDIR"
 
+############### INFRA (Postgres + Redis) ###############
+echo ">>> docker compose up -d (postgres + redis)"
+cd "$ROOT"
+docker compose up -d
+echo ">>> waiting for postgres..."
+until docker exec liquidgo-postgres pg_isready -U liquidgo >/dev/null 2>&1; do
+  sleep 1
+done
+echo "    postgres ready"
+
 ############### BACKEND ###############
 echo ">>> backend: venv + deps"
 cd "$BACKEND"
