@@ -83,3 +83,22 @@ def _dispatch_next_batch(request: ServiceRequest) -> None:
 def _seconds_until(assignment: RequestAssignment) -> int:
     delta = (assignment.expires_at - timezone.now()).total_seconds()
     return max(int(delta) + 1, 1)
+
+
+@shared_task
+def generate_receipt(request_id: int) -> None:
+    """Render and upload a PDF receipt for a completed request."""
+    try:
+        sr = (
+            ServiceRequest.objects
+            .select_related("customer", "driver__user", "payment", "region")
+            .get(pk=request_id)
+        )
+    except ServiceRequest.DoesNotExist:
+        return
+    if sr.status != RequestStatus.COMPLETED.value:
+        return
+
+    from requests_app.services.receipt import build_and_upload_receipt
+
+    build_and_upload_receipt(sr)

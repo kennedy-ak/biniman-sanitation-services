@@ -134,6 +134,8 @@ export interface ServiceRequest {
   arrived_at: string | null
   completed_at: string | null
   cancelled_at: string | null
+  receipt_url: string | null
+  receipt_generated_at: string | null
 }
 
 export interface QuotePreview {

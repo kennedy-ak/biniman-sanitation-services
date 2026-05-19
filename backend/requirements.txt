@@ -26,6 +26,7 @@ requests==2.32.3
 # Utils
 python-dateutil==2.9.0
 pillow==11.0.0
+reportlab==4.2.5
 
 # Dev
 ipython==8.30.0

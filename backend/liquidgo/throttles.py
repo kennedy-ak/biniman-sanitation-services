@@ -44,3 +44,7 @@ class PasswordLoginThrottle(AnonRateThrottle):
 
 class PasswordSetThrottle(UserRateThrottle):
     scope = "password_set"
+
+
+class ReceiptRegenerateThrottle(UserRateThrottle):
+    scope = "receipt_regenerate"
