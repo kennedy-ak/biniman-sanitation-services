@@ -19,6 +19,7 @@ psycopg[binary]==3.2.3
 
 # Storage / media
 cloudinary==1.42.0
+whitenoise==6.8.2
 
 # HTTP
 requests==2.32.3
