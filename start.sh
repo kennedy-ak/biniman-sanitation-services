@@ -48,6 +48,7 @@ DJANGO_ALLOWED_HOSTS=bini.binimansanitation.com,www.binimansanitation.com,binima
 CORS_ALLOWED_ORIGINS=https://www.binimansanitation.com,http://www.binimansanitation.com,https://binimansanitation.com,http://binimansanitation.com
 DATABASE_URL=postgres://liquidgo:liquidgo@localhost:5433/liquidgo
 REDIS_URL=redis://localhost:6379/0
+BACKEND_BASE_URL=https://bini.binimansanitation.com
 EOF
   echo "!!! Wrote default backend/.env — edit it then re-run."
 fi

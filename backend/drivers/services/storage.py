@@ -1,9 +1,11 @@
-"""Cloudinary upload helper with a dev mock when no credentials are configured."""
+"""File upload helper. Uses Cloudinary when configured, local VPS disk otherwise."""
 import logging
+import os
 import secrets
 from typing import IO
 
 from django.conf import settings
+from django.core.files.storage import default_storage
 
 logger = logging.getLogger(__name__)
 
@@ -16,14 +18,18 @@ def _is_configured() -> bool:
 def upload_document(file_obj: IO, folder: str = "biniman/drivers") -> dict:
     """Upload a file. Returns ``{"url": ..., "public_id": ...}``.
 
-    When Cloudinary is not configured, returns a deterministic fake URL so
-    onboarding flows still work end-to-end during development.
+    Uses Cloudinary when credentials are set, otherwise saves to MEDIA_ROOT
+    on the local VPS disk and returns a full URL via BACKEND_BASE_URL.
     """
     if not _is_configured():
-        token = secrets.token_hex(8)
-        url = f"https://placehold.co/600x400?text=mock+upload+{token}"
-        logger.warning("[CLOUDINARY MOCK] folder=%s -> %s", folder, url)
-        return {"url": url, "public_id": f"mock/{token}"}
+        filename = f"{secrets.token_hex(8)}_{os.path.basename(getattr(file_obj, 'name', 'file'))}"
+        save_path = f"{folder}/{filename}"
+        saved = default_storage.save(save_path, file_obj)
+        base = settings.BACKEND_BASE_URL.rstrip("/")
+        media = settings.MEDIA_URL.rstrip("/")
+        url = f"{base}{media}/{saved}"
+        logger.info("[LOCAL STORAGE] saved %s -> %s", saved, url)
+        return {"url": url, "public_id": saved}
 
     import cloudinary  # local import keeps app start fast
     import cloudinary.uploader
