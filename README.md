@@ -1,4 +1,4 @@
-# LiquidGo
+# Biniman
 
 Liquid waste management marketplace for Ghana. Customers request septic / soak pit / industrial liquid waste removal; nearest verified driver accepts; Paystack handles payment; platform takes commission.
 
@@ -45,8 +45,8 @@ Frontend: http://localhost:5173 — Backend: http://localhost:8000
 
 ## Documentation
 
-- `LiquidGo_Architecture_Document.pdf` — system design
-- `LiquidGo_Business_Overview.pdf` — product / business
+- `Biniman_Architecture_Document.pdf` — system design
+- `Biniman_Business_Overview.pdf` — product / business
 - `docs/BRAND.md` — colors and fonts
 
 ## Build Phases

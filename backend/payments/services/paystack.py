@@ -56,7 +56,7 @@ def _get(path: str) -> dict:
 
 def initialize_transaction(*, email: str, amount_ghs: Decimal, reference: str | None = None) -> dict:
     """Initialize a charge. Returns a dict with reference, authorization_url, access_code."""
-    ref = reference or f"liquidgo_{secrets.token_hex(8)}"
+    ref = reference or f"biniman_{secrets.token_hex(8)}"
     amount_kobo = int((amount_ghs * Decimal("100")).quantize(Decimal("1")))
 
     if not _is_live():

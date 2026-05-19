@@ -14,7 +14,7 @@ function EmailReminderBanner() {
   const user = useAuth((s) => s.user)
   const location = useLocation()
   const [dismissed, setDismissed] = useState<boolean>(() => {
-    return sessionStorage.getItem('liquidgo.email_banner_dismissed') === '1'
+    return sessionStorage.getItem('biniman.email_banner_dismissed') === '1'
   })
   if (!user) return null
   // Profile + email-OTP UI is currently only wired into the customer portal.
@@ -43,7 +43,7 @@ function EmailReminderBanner() {
         </Link>
         <button
           onClick={() => {
-            sessionStorage.setItem('liquidgo.email_banner_dismissed', '1')
+            sessionStorage.setItem('biniman.email_banner_dismissed', '1')
             setDismissed(true)
           }}
           className="text-amber-700/80 hover:text-amber-900 text-lg leading-none px-1"

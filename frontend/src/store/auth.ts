@@ -31,7 +31,7 @@ export const useAuth = create<AuthState>()(
       },
     }),
     {
-      name: 'liquidgo.auth',
+      name: 'biniman.auth',
       partialize: (s) => ({ user: s.user }),
       onRehydrateStorage: () => (state) => {
         state?.setHydrated(true)

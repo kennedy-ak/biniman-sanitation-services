@@ -157,7 +157,7 @@ def build_and_upload_receipt(sr: ServiceRequest) -> str:
     pdf_bytes = render_receipt_pdf(sr)
     buf = io.BytesIO(pdf_bytes)
     buf.name = f"receipt-{sr.pk}.pdf"
-    result = upload_document(buf, folder="liquidgo/receipts")
+    result = upload_document(buf, folder="biniman/receipts")
     url = result["url"]
     sr.receipt_url = url
     sr.receipt_generated_at = timezone.now()

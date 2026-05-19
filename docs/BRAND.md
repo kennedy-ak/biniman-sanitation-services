@@ -1,4 +1,4 @@
-# LiquidGo Brand Guide
+# Biniman Brand Guide
 
 ## Palette
 

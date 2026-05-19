@@ -13,7 +13,7 @@ def _is_configured() -> bool:
     return bool(cfg.get("cloud_name") and cfg.get("api_key") and cfg.get("api_secret"))
 
 
-def upload_document(file_obj: IO, folder: str = "liquidgo/drivers") -> dict:
+def upload_document(file_obj: IO, folder: str = "biniman/drivers") -> dict:
     """Upload a file. Returns ``{"url": ..., "public_id": ...}``.
 
     When Cloudinary is not configured, returns a deterministic fake URL so
