@@ -538,6 +538,8 @@ def user_update(request, user_id: int):
     payload = {k: v for k, v in request.data.items() if k in allowed}
     if "role" in payload and payload["role"] not in {r.value for r in Role}:
         raise ValidationError({"role": "Invalid role."})
+    if "role" in payload and payload["role"] in PRIVILEGED_ROLES and not request.user.is_superuser:
+        raise PermissionDenied("Only a superuser can assign privileged roles.")
     for k, v in payload.items():
         setattr(u, k, v if v != "" else None if k == "email" else v)
     if payload:

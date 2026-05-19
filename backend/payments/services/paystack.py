@@ -147,8 +147,7 @@ def verify_signature(raw_body: bytes, signature: str | None) -> bool:
         return False
     secret = settings.PAYSTACK_WEBHOOK_SECRET or settings.PAYSTACK_SECRET_KEY
     if not secret:
-        # In mock mode we accept whatever comes in to enable local testing.
-        return True
+        return False
     expected = hmac.new(secret.encode(), raw_body, hashlib.sha512).hexdigest()
     return hmac.compare_digest(expected, signature)
 

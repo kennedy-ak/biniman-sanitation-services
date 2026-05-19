@@ -170,6 +170,11 @@ def request_detail(request, request_id: int):
         driver = getattr(request.user, "driver_profile", None)
         if not driver or sr.driver_id != driver.id:
             raise PermissionDenied()
+    if request.user.role == Role.FLEET_ADMIN:
+        fleet = getattr(request.user, "fleet_company", None)
+        if not fleet or not sr.driver or getattr(sr.driver, "fleet_id", None) != fleet.id:
+            raise PermissionDenied()
+    # ADMIN: intentional platform-wide read access for support/audit
     return Response(ServiceRequestSerializer(sr).data)
 
 
