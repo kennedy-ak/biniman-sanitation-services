@@ -81,7 +81,10 @@ ASGI_APPLICATION = "liquidgo.asgi.application"
 # Engine starts as plain postgres. Switch to django.contrib.gis.db.backends.postgis
 # in Phase 2 once spatial models are introduced and GDAL is installed locally.
 DATABASES = {
-    "default": env.db_url("DATABASE_URL", default="postgres://liquidgo:liquidgo@localhost:5433/liquidgo"),
+    "default": {
+        **env.db_url("DATABASE_URL", default="postgres://liquidgo:liquidgo@localhost:5433/liquidgo"),
+        "CONN_MAX_AGE": 60,
+    }
 }
 
 AUTH_PASSWORD_VALIDATORS = [

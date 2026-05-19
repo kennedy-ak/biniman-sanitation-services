@@ -157,6 +157,20 @@ export function DriverDashboard() {
   })
 
   if (driver.isLoading) return <p>Loading…</p>
+  if (driver.isError) {
+    return (
+      <div>
+        <h1 className="text-3xl font-extrabold">Could not load profile</h1>
+        <p className="mt-2 text-charcoal/70">There was a problem fetching your driver profile.</p>
+        <button
+          onClick={() => driver.refetch()}
+          className="mt-4 inline-block bg-primary text-white px-5 py-2.5 rounded-md font-semibold"
+        >
+          Retry
+        </button>
+      </div>
+    )
+  }
   if (!driver.data) {
     return (
       <div>

@@ -2,8 +2,8 @@ import axios, { AxiosError, type InternalAxiosRequestConfig } from 'axios'
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api/v1'
 
-export const ACCESS_KEY = 'liquidgo.access_token'
-export const REFRESH_KEY = 'liquidgo.refresh_token'
+export const ACCESS_KEY = 'biniman.access_token'
+export const REFRESH_KEY = 'biniman.refresh_token'
 
 export const api = axios.create({
   baseURL: API_URL,

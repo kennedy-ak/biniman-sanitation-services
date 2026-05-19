@@ -1,4 +1,4 @@
-# LiquidGo Backend
+# Biniman Backend
 
 Django 5 + DRF + Channels + Celery.
 
