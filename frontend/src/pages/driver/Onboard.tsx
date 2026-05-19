@@ -21,7 +21,7 @@ const DOC_TYPES: { value: DocumentType; label: string; hint: string }[] = [
   { value: 'epa_permit', label: 'EPA waste handling permit', hint: 'Required for liquid waste transport' },
 ]
 
-const VEHICLE_REG_RE = /^[A-Z]{2}-?\d{3,4}-?\d{2}$/i
+const VEHICLE_REG_RE = /^[A-Z0-9][A-Z0-9\-\s]{1,18}[A-Z0-9]$/i
 const MOMO_RE = /^0\d{9}$/
 
 type Toast = { kind: 'success' | 'error'; msg: string } | null
@@ -85,7 +85,7 @@ export function DriverOnboard() {
   const errors = useMemo(() => {
     const e: Record<string, string> = {}
     if (form.vehicle_reg && !VEHICLE_REG_RE.test(form.vehicle_reg.trim()))
-      e.vehicle_reg = 'Format: GR-1234-25'
+      e.vehicle_reg = 'Min 3 characters (letters, digits, dashes)'
     if (form.vehicle_capacity_litres < 500) e.vehicle_capacity_litres = 'Minimum 500 L'
     if (form.base_fee && Number(form.base_fee) <= 0) e.base_fee = 'Must be greater than 0'
     if (form.momo_number && !MOMO_RE.test(form.momo_number)) e.momo_number = '10 digits, e.g. 0241234567'
@@ -333,13 +333,13 @@ function VehicleStep({
       </div>
 
       <div className="mt-6 grid sm:grid-cols-2 gap-4">
-        <Field label="Vehicle registration" error={errors.vehicle_reg} hint="Format: GR-1234-25">
+        <Field label="Vehicle registration" error={errors.vehicle_reg} hint="e.g. GR-1234-25, AS-567-24">
           <input
             required
             className="input"
             value={form.vehicle_reg}
             onChange={(e) => setForm({ ...form, vehicle_reg: e.target.value.toUpperCase() })}
-            placeholder="GR-1234-25"
+            placeholder="e.g. GR-1234-25"
           />
         </Field>
         <Field label="Capacity (litres)" error={errors.vehicle_capacity_litres} hint="Effective tank capacity">

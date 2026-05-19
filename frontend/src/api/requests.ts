@@ -55,9 +55,7 @@ export async function createRequest(payload: CreateRequestPayload) {
     if (v instanceof File) fd.append(k, v)
     else fd.append(k, String(v))
   }
-  const { data } = await api.post<ServiceRequest>('/requests/', fd, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  })
+  const { data } = await api.post<ServiceRequest>('/requests/', fd)
   return data
 }
 

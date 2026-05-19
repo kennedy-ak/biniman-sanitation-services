@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { fetchRequest } from '@/api/requests'
@@ -17,6 +17,7 @@ export function CustomerPay() {
   const navigate = useNavigate()
   const [payment, setPayment] = useState<Payment | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const initiated = useRef(false)
 
   const reqQuery = useQuery({
     queryKey: ['request', requestId],
@@ -52,10 +53,12 @@ export function CustomerPay() {
   })
 
   useEffect(() => {
-    if (reqQuery.data && !payment && !initMut.isPending && !initMut.isSuccess) {
+    if (reqQuery.data && !initiated.current) {
+      initiated.current = true
       initMut.mutate()
     }
-  }, [reqQuery.data, payment, initMut])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reqQuery.data])
 
   if (reqQuery.isLoading)
     return <p className="text-charcoal/60">Loading…</p>
