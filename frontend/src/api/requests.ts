@@ -81,6 +81,13 @@ export async function retryRequest(id: number) {
   return data
 }
 
+export async function regenerateReceipt(id: number) {
+  const { data } = await api.post<{ status: string }>(
+    `/requests/${id}/receipt/regenerate/`,
+  )
+  return data
+}
+
 // ----- Driver -----
 
 // Backend DecimalField(max_digits=10, decimal_places=7) — round before sending.

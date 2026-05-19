@@ -12,6 +12,7 @@ urlpatterns = [
     path("<int:request_id>/", views.request_detail, name="detail"),
     path("<int:request_id>/cancel/", views.cancel_request, name="cancel"),
     path("<int:request_id>/retry/", views.retry_request, name="retry"),
+    path("<int:request_id>/receipt/regenerate/", views.regenerate_receipt, name="receipt-regenerate"),
     # Driver
     path("driver/online/", views.driver_online, name="driver-online"),
     path("driver/ping/", views.driver_ping, name="driver-ping"),

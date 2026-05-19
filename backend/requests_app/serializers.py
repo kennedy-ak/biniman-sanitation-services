@@ -74,6 +74,7 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
             "status", "cancel_reason", "payment_status",
             "created_at", "accepted_at", "en_route_at",
             "arrived_at", "completed_at", "cancelled_at",
+            "receipt_url", "receipt_generated_at",
         )
         read_only_fields = fields
 

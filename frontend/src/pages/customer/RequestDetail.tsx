@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useLocation, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { cancelRequest, fetchMyRequests, fetchRequest, retryRequest } from '@/api/requests'
+import { cancelRequest, fetchMyRequests, fetchRequest, regenerateReceipt, retryRequest } from '@/api/requests'
 import { useRequestSocket } from '@/hooks/useRequestSocket'
 import { fetchUserSummary } from '@/api/ratings'
 import { RatingForm, Stars } from '@/components/RatingForm'
@@ -62,7 +62,10 @@ export function CustomerRequestDetail() {
     queryFn: () => fetchRequest(id),
     enabled: Number.isFinite(id),
     refetchInterval: (query) => {
-      const status = query.state.data?.status
+      const data = query.state.data
+      const status = data?.status
+      // Keep polling briefly after completion until the receipt URL lands.
+      if (status === 'completed' && !data?.receipt_url) return 5000
       const terminal = status === 'completed' || status === 'cancelled' || status === 'unfulfilled'
       return terminal ? false : 3000
     },
@@ -89,6 +92,23 @@ export function CustomerRequestDetail() {
       const data = err.response?.data
       setCancelError(
         data?.detail ?? data?.reason?.[0] ?? err.message ?? 'Could not cancel the request.',
+      )
+    },
+  })
+
+  const [receiptError, setReceiptError] = useState<string | null>(null)
+  const regenMut = useMutation({
+    mutationFn: () => regenerateReceipt(id),
+    onSuccess: () => {
+      setReceiptError(null)
+      qc.invalidateQueries({ queryKey: ['request', id] })
+    },
+    onError: (err: Error & { response?: { data?: { detail?: string }; status?: number } }) => {
+      const data = err.response?.data
+      setReceiptError(
+        data?.detail ?? (err.response?.status === 429
+          ? 'Too many regeneration attempts. Try again later.'
+          : err.message ?? 'Could not regenerate the receipt.'),
       )
     },
   })
@@ -353,6 +373,57 @@ export function CustomerRequestDetail() {
       {sr.status === 'completed' && sr.driver && (
         <section className="bg-white border border-charcoal/5 rounded-2xl shadow-sm p-6">
           <RatingForm requestId={sr.id} label="Rate your driver" />
+        </section>
+      )}
+
+      {/* Receipt — only after completion */}
+      {sr.status === 'completed' && (
+        <section className="bg-white border border-charcoal/5 rounded-2xl shadow-sm p-6">
+          <h2 className="font-heading font-bold text-lg">Receipt</h2>
+          {sr.receipt_url ? (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <p className="text-sm text-charcoal/70">
+                  Your PDF receipt is ready.
+                  {sr.receipt_generated_at && (
+                    <span className="ml-1 text-charcoal/50 text-xs">
+                      Generated{' '}
+                      {new Date(sr.receipt_generated_at).toLocaleString(undefined, {
+                        dateStyle: 'medium',
+                        timeStyle: 'short',
+                      })}
+                    </span>
+                  )}
+                </p>
+                <button
+                  onClick={() => regenMut.mutate()}
+                  disabled={regenMut.isPending}
+                  className="mt-2 text-xs text-primary hover:underline disabled:opacity-60"
+                >
+                  {regenMut.isPending ? 'Regenerating…' : 'Regenerate'}
+                </button>
+              </div>
+              <a
+                href={sr.receipt_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="bg-primary text-white font-bold px-5 py-2.5 rounded-lg hover:bg-primary/90 transition inline-flex items-center gap-2"
+              >
+                <span>⬇</span>
+                <span>Download receipt</span>
+              </a>
+            </div>
+          ) : (
+            <div className="mt-4 flex items-center gap-3 text-sm text-charcoal/70">
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+              <span>Your receipt is being prepared… this usually takes a few seconds.</span>
+            </div>
+          )}
+          {receiptError && (
+            <p className="mt-3 text-sm text-red-700 bg-red-100 border border-red-200 rounded-md px-3 py-2">
+              {receiptError}
+            </p>
+          )}
         </section>
       )}
 

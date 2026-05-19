@@ -4,7 +4,7 @@ from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status
-from rest_framework.decorators import api_view, parser_classes, permission_classes
+from rest_framework.decorators import api_view, parser_classes, permission_classes, throttle_classes
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
@@ -32,6 +32,7 @@ from requests_app.serializers import (
     StatusTransitionSerializer,
 )
 from requests_app.services.broadcast import push_offer_cancelled, push_request_status
+from liquidgo.throttles import ReceiptRegenerateThrottle
 
 
 def _nearest_idle_driver_distance_km(region: Region, lat: float, lng: float) -> float:
@@ -437,8 +438,10 @@ def driver_status(request, request_id: int):
         # Pay-after-job model: only fires if the customer has already paid.
         # Otherwise the payout fires when payment confirms (see orchestrator).
         from payments.tasks import task_trigger_payout
+        from requests_app.tasks import generate_receipt
 
         task_trigger_payout.delay(sr.id)
+        generate_receipt.delay(sr.id)
 
     return Response(ServiceRequestSerializer(sr).data)
 
@@ -487,3 +490,24 @@ def driver_job_history(request):
         status__in=[RequestStatus.COMPLETED.value, RequestStatus.CANCELLED.value],
     ).order_by("-created_at")[:50]
     return Response(ServiceRequestSerializer(qs, many=True).data)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+@throttle_classes([ReceiptRegenerateThrottle])
+def regenerate_receipt(request, request_id: int):
+    """Safety net: re-enqueue PDF generation for a completed request.
+
+    Allowed for the request's customer and any staff user. Idempotent — the
+    task overwrites `receipt_url` on completion.
+    """
+    sr = get_object_or_404(ServiceRequest, pk=request_id)
+    if not (request.user == sr.customer or request.user.is_staff):
+        raise PermissionDenied("You may not regenerate this receipt.")
+    if sr.status != RequestStatus.COMPLETED.value:
+        raise ValidationError("Receipt is only available for completed requests.")
+
+    from requests_app.tasks import generate_receipt
+
+    generate_receipt.delay(sr.id)
+    return Response({"status": "queued"}, status=status.HTTP_202_ACCEPTED)

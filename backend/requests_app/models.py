@@ -152,6 +152,9 @@ class ServiceRequest(models.Model):
     completed_at = models.DateTimeField(null=True, blank=True)
     cancelled_at = models.DateTimeField(null=True, blank=True)
 
+    receipt_url = models.URLField(blank=True, default="")
+    receipt_generated_at = models.DateTimeField(null=True, blank=True)
+
     class Meta:
         ordering = ["-created_at"]
         indexes = [

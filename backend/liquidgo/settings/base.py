@@ -133,6 +133,7 @@ REST_FRAMEWORK = {
         "admin_user_create": "30/hour",
         "password_login": "20/hour",
         "password_set": "10/hour",
+        "receipt_regenerate": "10/hour",
     },
 }
 
