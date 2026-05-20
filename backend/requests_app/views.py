@@ -96,6 +96,16 @@ def create_request(request):
     if request.user.role not in {Role.CUSTOMER, Role.ADMIN}:
         raise PermissionDenied("Only customers can create requests.")
 
+    active_statuses = [
+        RequestStatus.PENDING, RequestStatus.ASSIGNED,
+        RequestStatus.ACCEPTED, RequestStatus.EN_ROUTE, RequestStatus.ARRIVED,
+    ]
+    if ServiceRequest.objects.filter(
+        customer=request.user,
+        status__in=[s.value for s in active_statuses],
+    ).exists():
+        raise ValidationError({"detail": "You already have an active request. Complete or cancel it before creating a new one."})
+
     serializer = CreateRequestSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
     data = serializer.validated_data

@@ -78,12 +78,21 @@ export function CustomerDashboard() {
           </h1>
           <p className="mt-1 text-charcoal/60">Here's what's happening with your pickups.</p>
         </div>
-        <Link
-          to="/customer/new"
-          className="bg-primary text-white font-bold px-5 py-3 rounded-lg hover:bg-primary/90 transition shadow-sm"
-        >
-          + New request
-        </Link>
+        {active ? (
+          <span
+            title="Complete or cancel your active job first"
+            className="bg-primary/40 text-white font-bold px-5 py-3 rounded-lg cursor-not-allowed shadow-sm select-none"
+          >
+            + New request
+          </span>
+        ) : (
+          <Link
+            to="/customer/new"
+            className="bg-primary text-white font-bold px-5 py-3 rounded-lg hover:bg-primary/90 transition shadow-sm"
+          >
+            + New request
+          </Link>
+        )}
       </div>
 
       {/* Stats */}

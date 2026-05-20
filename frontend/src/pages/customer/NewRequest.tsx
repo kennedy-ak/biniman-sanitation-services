@@ -2,8 +2,11 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { fetchRegions } from '@/api/auth'
-import { createRequest, previewQuote } from '@/api/requests'
+import { createRequest, fetchMyRequests, previewQuote } from '@/api/requests'
 import { useAuth } from '@/store/auth'
+import type { RequestStatus } from '@/types'
+
+const ACTIVE_STATUSES: RequestStatus[] = ['pending', 'assigned', 'accepted', 'en_route', 'arrived']
 import type {
   GateFit,
   LastEmptied,
@@ -81,6 +84,13 @@ export function CustomerNewRequest() {
   const navigate = useNavigate()
   const user = useAuth((s) => s.user)
   const regions = useQuery({ queryKey: ['regions'], queryFn: fetchRegions })
+  const myRequests = useQuery({ queryKey: ['my-requests'], queryFn: fetchMyRequests })
+
+  useEffect(() => {
+    if (myRequests.data?.some((r) => ACTIVE_STATUSES.includes(r.status))) {
+      navigate('/customer', { replace: true })
+    }
+  }, [myRequests.data, navigate])
 
   const [regionId, setRegionId] = useState<number | undefined>(user?.region?.id)
   const [wasteType, setWasteType] = useState<WasteType>('septic')
