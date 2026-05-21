@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useLocation, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { cancelRequest, fetchMyRequests, fetchRequest, regenerateReceipt, retryRequest } from '@/api/requests'
+import { cancelRequest, fetchMyRequests, fetchRequest, fetchDisputeThread, replyToDispute, submitCancelReason, regenerateReceipt, retryRequest, type DisputeThreadMessage } from '@/api/requests'
 import { useRequestSocket } from '@/hooks/useRequestSocket'
 import { fetchUserSummary } from '@/api/ratings'
 import { RatingForm, Stars } from '@/components/RatingForm'
@@ -365,6 +365,11 @@ export function CustomerRequestDetail() {
             </div>
           </div>
 
+          {/* Dispute thread */}
+          {(sr.status === 'cancelled' || sr.status === 'unfulfilled') && (
+            <DisputeThreadCard requestId={sr.id} cancelReason={sr.cancel_reason} />
+          )}
+
           {/* Rating */}
           {sr.status === 'completed' && sr.driver && (
             <div className="bg-white border border-charcoal/8 rounded-2xl shadow-sm p-6">
@@ -514,6 +519,162 @@ export function CustomerRequestDetail() {
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
+
+// ── Dispute thread card ───────────────────────────────────────────────────────
+
+function DisputeThreadCard({ requestId, cancelReason }: { requestId: number; cancelReason?: string }) {
+  const qc = useQueryClient()
+  const [reply, setReply] = useState('')
+  const [reason, setReason] = useState('')
+  const [showReasonInput, setShowReasonInput] = useState(false)
+
+  const threadQuery = useQuery({
+    queryKey: ['dispute-thread', requestId],
+    queryFn: () => fetchDisputeThread(requestId),
+    refetchInterval: 15_000,
+  })
+
+  const replyMut = useMutation({
+    mutationFn: () => replyToDispute(requestId, reply),
+    onSuccess: () => {
+      setReply('')
+      qc.invalidateQueries({ queryKey: ['dispute-thread', requestId] })
+    },
+  })
+
+  const reasonMut = useMutation({
+    mutationFn: () => submitCancelReason(requestId, reason),
+    onSuccess: () => {
+      setReason('')
+      setShowReasonInput(false)
+      qc.invalidateQueries({ queryKey: ['request', requestId] })
+      qc.invalidateQueries({ queryKey: ['dispute-thread', requestId] })
+    },
+  })
+
+  const messages = threadQuery.data ?? []
+  const hasThread = messages.length > 0
+  const adminAskedForReason = messages.some(
+    (m) => m.sender_type === 'admin' && m.content.toLowerCase().includes('why you cancelled'),
+  )
+  const needsReason = !cancelReason && adminAskedForReason
+
+  if (!hasThread && !needsReason) return null
+
+  return (
+    <div className="bg-white border border-charcoal/8 rounded-2xl shadow-sm overflow-hidden">
+      <div className="px-6 pt-5 pb-4 flex items-center gap-2.5">
+        <div className="w-7 h-7 rounded-lg bg-purple-50 flex items-center justify-center text-sm">↩️</div>
+        <span className="text-sm font-semibold text-charcoal">Refund update</span>
+        {hasThread && (
+          <span className="ml-auto text-xs text-charcoal/40">{messages.length} message{messages.length !== 1 ? 's' : ''}</span>
+        )}
+      </div>
+
+      {/* Thread messages */}
+      <div className="px-6 space-y-3 max-h-64 overflow-y-auto">
+        {messages.map((m) => (
+          <CustomerMessageBubble key={m.id} msg={m} />
+        ))}
+      </div>
+
+      {/* Cancel reason prompt */}
+      {needsReason && (
+        <div className="mx-6 mt-4 bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
+          <p className="text-sm text-amber-800 font-medium">
+            Support is asking why you cancelled. Please tell us so we can process your refund faster.
+          </p>
+          {!showReasonInput ? (
+            <button
+              onClick={() => setShowReasonInput(true)}
+              className="text-sm font-semibold text-amber-700 border border-amber-300 bg-white px-4 py-2 rounded-lg hover:bg-amber-50 transition"
+            >
+              Provide reason
+            </button>
+          ) : (
+            <div className="space-y-2">
+              <textarea
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                placeholder="Tell us why you cancelled…"
+                rows={3}
+                className="w-full border border-amber-200 rounded-lg px-3 py-2.5 text-sm resize-none outline-none focus:border-amber-400 transition"
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowReasonInput(false)}
+                  className="px-3 py-2 rounded-lg border border-charcoal/15 text-sm text-charcoal hover:bg-charcoal/5 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => reasonMut.mutate()}
+                  disabled={reasonMut.isPending || !reason.trim()}
+                  className="px-4 py-2 rounded-lg bg-amber-600 text-white text-sm font-semibold hover:bg-amber-700 disabled:opacity-60 transition"
+                >
+                  {reasonMut.isPending ? 'Submitting…' : 'Submit'}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Reply input */}
+      {hasThread && (
+        <div className="px-6 pb-6 mt-4 space-y-2">
+          <textarea
+            value={reply}
+            onChange={(e) => setReply(e.target.value)}
+            placeholder="Reply to support…"
+            rows={2}
+            className="w-full border border-charcoal/15 rounded-xl px-3 py-2.5 text-sm resize-none outline-none focus:border-primary/50 transition"
+          />
+          <button
+            onClick={() => replyMut.mutate()}
+            disabled={replyMut.isPending || !reply.trim()}
+            className="bg-primary text-white text-sm font-semibold px-5 py-2 rounded-lg hover:bg-primary/90 disabled:opacity-50 transition"
+          >
+            {replyMut.isPending ? 'Sending…' : 'Send reply'}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function CustomerMessageBubble({ msg }: { msg: DisputeThreadMessage }) {
+  const isAdmin = msg.sender_type === 'admin'
+  return (
+    <div className={`flex ${isAdmin ? 'justify-start' : 'justify-end'}`}>
+      <div className={`max-w-[80%] rounded-2xl px-3.5 py-2.5 text-sm space-y-1.5 ${
+        isAdmin
+          ? 'bg-charcoal/8 text-charcoal rounded-bl-sm'
+          : 'bg-primary text-white rounded-br-sm'
+      }`}>
+        <p className={`text-[10px] font-semibold opacity-60 ${isAdmin ? '' : 'text-right'}`}>
+          {isAdmin ? 'Support' : 'You'}
+        </p>
+        <p className="leading-relaxed">{msg.content}</p>
+        {msg.attachment_url && (
+          <a
+            href={msg.attachment_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`text-[11px] underline block ${isAdmin ? 'text-primary' : 'text-white/80'}`}
+          >
+            View receipt
+          </a>
+        )}
+        <p className={`text-[10px] opacity-50 ${isAdmin ? '' : 'text-right'}`}>
+          {new Date(msg.created_at).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}
+        </p>
+      </div>
+    </div>
+  )
+}
+
+// ── Driver card ───────────────────────────────────────────────────────────────
 
 function DriverCard({
   driverUserId,

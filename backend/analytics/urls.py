@@ -19,5 +19,7 @@ urlpatterns = [
     path("requests/<int:request_id>/refund/", views.force_refund, name="force-refund"),
     path("requests/<int:request_id>/payout/", views.force_payout, name="force-payout"),
     path("requests/<int:request_id>/force-complete/", views.admin_force_complete, name="force-complete"),
+    path("requests/<int:request_id>/request-cancel-reason/", views.request_cancel_reason, name="request-cancel-reason"),
+    path("requests/<int:request_id>/dispute-thread/", views.dispute_thread, name="dispute-thread"),
     path("payouts/<int:payout_id>/mark-succeeded/", views.mark_payout_succeeded, name="payout-succeeded"),
 ]

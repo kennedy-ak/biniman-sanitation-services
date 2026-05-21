@@ -13,6 +13,9 @@ urlpatterns = [
     path("<int:request_id>/cancel/", views.cancel_request, name="cancel"),
     path("<int:request_id>/retry/", views.retry_request, name="retry"),
     path("<int:request_id>/receipt/regenerate/", views.regenerate_receipt, name="receipt-regenerate"),
+    path("<int:request_id>/dispute-thread/", views.dispute_thread, name="dispute-thread"),
+    path("<int:request_id>/dispute-reply/", views.dispute_reply, name="dispute-reply"),
+    path("<int:request_id>/cancel-reason/", views.submit_cancel_reason, name="cancel-reason"),
     # Driver
     path("driver/online/", views.driver_online, name="driver-online"),
     path("driver/ping/", views.driver_ping, name="driver-ping"),
