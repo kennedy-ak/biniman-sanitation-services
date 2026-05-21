@@ -1,13 +1,17 @@
 import { useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import type { ReactNode } from 'react'
-import { cn } from '@/lib/cn'
 import { useAuth } from '@/store/auth'
 import { BRAND } from '@/lib/brand'
 
 interface PortalLayoutProps {
   title: string
   navItems: { to: string; label: string; icon?: ReactNode }[]
+}
+
+function initials(name: string, fallback: string) {
+  const src = name || fallback
+  return src.split(/\s+/).map((p) => p[0]).filter(Boolean).slice(0, 2).join('').toUpperCase()
 }
 
 function EmailReminderBanner() {
@@ -17,35 +21,27 @@ function EmailReminderBanner() {
     return sessionStorage.getItem('biniman.email_banner_dismissed') === '1'
   })
   if (!user) return null
-  // Profile + email-OTP UI is currently only wired into the customer portal.
   if (user.role !== 'customer') return null
   const needs = !user.email || !user.is_email_verified
   if (!needs || dismissed) return null
   if (location.pathname.includes('/profile')) return null
 
   const profilePath = '/customer/profile'
-
   const message = !user.email
     ? 'Add an email to your profile so you can receive OTP codes by email too.'
     : 'Your email is unverified. Verify it from your profile to enable email OTP.'
 
   return (
-    <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+    <div className="mb-5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 flex flex-wrap items-center justify-between gap-3">
       <div className="text-sm text-amber-900">
         <span className="font-semibold">Heads up:</span> {message}
       </div>
       <div className="flex items-center gap-3">
-        <Link
-          to={profilePath}
-          className="text-sm font-semibold text-amber-900 underline hover:no-underline"
-        >
+        <Link to={profilePath} className="text-sm font-semibold text-amber-900 underline hover:no-underline">
           {user.email ? 'Verify now' : 'Add email'}
         </Link>
         <button
-          onClick={() => {
-            sessionStorage.setItem('biniman.email_banner_dismissed', '1')
-            setDismissed(true)
-          }}
+          onClick={() => { sessionStorage.setItem('biniman.email_banner_dismissed', '1'); setDismissed(true) }}
           className="text-amber-700/80 hover:text-amber-900 text-lg leading-none px-1"
           aria-label="Dismiss"
         >
@@ -63,56 +59,76 @@ export function PortalLayout({ title, navItems }: PortalLayoutProps) {
   const logout = useAuth((s) => s.logout)
   const [open, setOpen] = useState(false)
 
-  // Close drawer on route change
-  useEffect(() => {
-    setOpen(false)
-  }, [location.pathname])
+  useEffect(() => { setOpen(false) }, [location.pathname])
+
+  const userInit = initials(user?.full_name ?? '', user?.phone ?? 'U')
 
   const sidebar = (
-    <aside className="bg-charcoal text-white flex flex-col gap-5 p-5 h-full w-full md:w-[240px]">
-      <Link to="/" className="font-heading font-extrabold text-xl leading-tight">
-        {BRAND.name}
-        <span className="block text-[10px] font-medium text-white/50 uppercase tracking-widest mt-0.5">
-          Sanitation Services
-        </span>
-      </Link>
-      <div className="text-[10px] uppercase tracking-widest text-white/50 font-semibold">
+    <aside className="bg-primary text-white flex flex-col h-full w-full">
+      {/* Brand */}
+      <div className="px-6 py-7 border-b border-white/[0.08]">
+        <Link to="/" className="block">
+          <span className="font-heading text-[22px] text-white tracking-[-0.3px] leading-none">
+            {BRAND.name}
+          </span>
+          <span className="block text-[9px] tracking-[2.5px] uppercase text-[#7aad8e] mt-1">
+            Sanitation Services
+          </span>
+        </Link>
+      </div>
+
+      {/* Section label */}
+      <div className="px-4 pt-5 pb-2 text-[9px] tracking-[2px] uppercase text-white/30 font-medium">
         {title}
       </div>
-      <nav className="flex flex-col gap-1">
+
+      {/* Nav */}
+      <nav className="flex-1 px-3 space-y-0.5">
         {navItems.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
             end
             className={({ isActive }) =>
-              cn(
-                'px-3 py-2 rounded-md text-sm font-medium transition',
+              `flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-[13.5px] transition-all ${
                 isActive
-                  ? 'bg-primary text-white'
-                  : 'text-white/70 hover:bg-white/10 hover:text-white',
-              )
+                  ? 'bg-white/[0.12] text-white font-medium'
+                  : 'text-white/60 hover:bg-white/[0.07] hover:text-white'
+              }`
             }
           >
-            {item.label}
+            {({ isActive }) => (
+              <>
+                <span
+                  className={`w-1.5 h-1.5 rounded-full flex-shrink-0 transition-all ${
+                    isActive ? 'bg-[#5dd4a0] opacity-100' : 'bg-[#7aad8e] opacity-60'
+                  }`}
+                />
+                {item.label}
+              </>
+            )}
           </NavLink>
         ))}
       </nav>
-      <div className="mt-auto pt-5 border-t border-white/10">
+
+      {/* Footer */}
+      <div className="border-t border-white/[0.08] px-4 py-5">
         {user && (
-          <div className="text-sm">
-            <div className="font-medium text-white truncate">
-              {user.full_name || user.phone}
+          <div className="flex items-center gap-2.5">
+            <div className="w-[34px] h-[34px] rounded-full bg-[#3d7a5c] flex items-center justify-center text-[12px] font-semibold text-[#c8e6d4] flex-shrink-0">
+              {userInit}
             </div>
-            <div className="text-xs text-white/50 truncate">{user.phone}</div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[12.5px] font-medium text-white truncate">
+                {user.full_name || user.phone}
+              </p>
+              <p className="text-[11px] text-white/40 truncate">{user.phone}</p>
+            </div>
           </div>
         )}
         <button
-          onClick={() => {
-            logout()
-            navigate('/')
-          }}
-          className="mt-3 text-xs text-white/60 hover:text-white"
+          onClick={() => { logout(); navigate('/') }}
+          className="mt-3 text-[11px] text-white/40 hover:text-white/70 transition"
         >
           Sign out
         </button>
@@ -121,9 +137,9 @@ export function PortalLayout({ title, navItems }: PortalLayoutProps) {
   )
 
   return (
-    <div className="min-h-full md:grid md:grid-cols-[240px_1fr]">
+    <div className="min-h-full md:grid md:grid-cols-[220px_1fr]">
       {/* Mobile top bar */}
-      <header className="md:hidden sticky top-0 z-30 bg-charcoal text-white flex items-center justify-between px-4 h-14 border-b border-white/10">
+      <header className="md:hidden sticky top-0 z-30 bg-primary text-white flex items-center justify-between px-4 h-14 border-b border-white/10">
         <button
           onClick={() => setOpen(true)}
           aria-label="Open menu"
@@ -131,26 +147,18 @@ export function PortalLayout({ title, navItems }: PortalLayoutProps) {
         >
           <span className="block w-5 h-0.5 bg-white relative before:content-[''] before:absolute before:-top-1.5 before:left-0 before:w-5 before:h-0.5 before:bg-white after:content-[''] after:absolute after:top-1.5 after:left-0 after:w-5 after:h-0.5 after:bg-white" />
         </button>
-        <Link to="/" className="font-heading font-extrabold text-lg tracking-tight">
-          {BRAND.name}
-        </Link>
-        <span className="text-[10px] uppercase tracking-widest text-white/60 font-semibold">
-          {title}
-        </span>
+        <Link to="/" className="font-heading text-lg text-white">{BRAND.name}</Link>
+        <span className="text-[10px] uppercase tracking-widest text-white/50">{title}</span>
       </header>
 
       {/* Desktop sidebar */}
-      <div className="hidden md:block">{sidebar}</div>
+      <div className="hidden md:block sticky top-0 h-screen">{sidebar}</div>
 
       {/* Mobile drawer */}
       {open && (
         <>
-          <div
-            className="md:hidden fixed inset-0 bg-black/50 z-40"
-            onClick={() => setOpen(false)}
-            aria-hidden
-          />
-          <div className="md:hidden fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] shadow-2xl">
+          <div className="md:hidden fixed inset-0 bg-black/50 z-40" onClick={() => setOpen(false)} aria-hidden />
+          <div className="md:hidden fixed inset-y-0 left-0 z-50 w-[220px] shadow-2xl">
             <button
               onClick={() => setOpen(false)}
               aria-label="Close menu"
@@ -163,7 +171,7 @@ export function PortalLayout({ title, navItems }: PortalLayoutProps) {
         </>
       )}
 
-      <main className="bg-gray-50 min-h-[calc(100vh-3.5rem)] md:min-h-full p-4 sm:p-6 md:p-8 overflow-x-hidden">
+      <main className="bg-[#faf8f4] min-h-[calc(100vh-3.5rem)] md:min-h-full p-6 md:p-10 overflow-x-hidden">
         <EmailReminderBanner />
         <Outlet />
       </main>

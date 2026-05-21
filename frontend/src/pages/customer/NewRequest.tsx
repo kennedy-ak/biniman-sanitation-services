@@ -19,21 +19,16 @@ import type {
   WasteType,
 } from '@/types'
 
-const WASTE_TYPES: {
-  value: WasteType
-  label: string
-  desc: string
-  icon: string
-}[] = [
+const WASTE_TYPES: { value: WasteType; label: string; desc: string; icon: string }[] = [
   { value: 'septic', label: 'Septic tank', desc: 'Residential or commercial', icon: '🚽' },
   { value: 'soak_pit', label: 'Soak pit', desc: 'Cesspit / leach pit', icon: '🕳️' },
   { value: 'industrial', label: 'Industrial', desc: 'Liquid industrial waste', icon: '🏭' },
 ]
 
-const TIERS: { value: VolumeTier; label: string; range: string; icon: string }[] = [
-  { value: 'small', label: 'Small', range: '≤ 2,000 L', icon: '🥤' },
-  { value: 'medium', label: 'Medium', range: '2,000–5,000 L', icon: '🪣' },
-  { value: 'large', label: 'Large', range: '5,000+ L', icon: '🛢️' },
+const TIERS: { value: VolumeTier; label: string; range: string; fill: string }[] = [
+  { value: 'small', label: 'Small', range: '≤ 2,000 L', fill: '33%' },
+  { value: 'medium', label: 'Medium', range: '2,000–5,000 L', fill: '66%' },
+  { value: 'large', label: 'Large', range: '5,000+ L', fill: '100%' },
 ]
 
 const GATE_FIT_OPTS: { value: GateFit; label: string }[] = [
@@ -80,6 +75,8 @@ const PREFERRED_TIME_OPTS: { value: PreferredTime; label: string }[] = [
   { value: 'evening', label: 'Evening' },
 ]
 
+const STEP_LABELS = ['Service', 'Location', 'Access', 'Details']
+
 export function CustomerNewRequest() {
   const navigate = useNavigate()
   const user = useAuth((s) => s.user)
@@ -92,6 +89,7 @@ export function CustomerNewRequest() {
     }
   }, [myRequests.data, navigate])
 
+  const [step, setStep] = useState(1)
   const [regionId, setRegionId] = useState<number | undefined>(user?.region?.id)
   const [wasteType, setWasteType] = useState<WasteType>('septic')
   const [tier, setTier] = useState<VolumeTier>('medium')
@@ -105,7 +103,6 @@ export function CustomerNewRequest() {
   const [locateError, setLocateError] = useState<string | null>(null)
   const [showCoords, setShowCoords] = useState(false)
 
-  // Site survey
   const [gateFits, setGateFits] = useState<GateFit | ''>('')
   const [gatePhoto, setGatePhoto] = useState<File | null>(null)
   const [tankLocation, setTankLocation] = useState<TankLocation | ''>('')
@@ -123,9 +120,7 @@ export function CustomerNewRequest() {
 
   useEffect(() => {
     if (!regionId) return
-    const t = setTimeout(() => {
-      void refreshQuote()
-    }, 400)
+    const t = setTimeout(() => { void refreshQuote() }, 400)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [regionId, tier, lat, lng])
@@ -155,12 +150,7 @@ export function CustomerNewRequest() {
     if (!regionId) return
     setQuoting(true)
     try {
-      const q = await previewQuote({
-        region_id: regionId,
-        pickup_lat: lat,
-        pickup_lng: lng,
-        volume_tier: tier,
-      })
+      const q = await previewQuote({ region_id: regionId, pickup_lat: lat, pickup_lng: lng, volume_tier: tier })
       setQuote(q)
     } catch {
       setQuote(null)
@@ -195,199 +185,290 @@ export function CustomerNewRequest() {
 
   const canSubmit = !!regionId && !!lat && !!lng && !!gatePhoto
 
+  function goStep(n: number) {
+    setStep(n)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
   return (
-    <div className="max-w-5xl mx-auto space-y-8 pb-12">
-      {/* Header */}
-      <div>
-        <h1 className="font-heading text-3xl md:text-4xl font-extrabold text-charcoal">
-          Request a pickup
-        </h1>
-        <p className="mt-1 text-charcoal/60 max-w-lg">
-          Fill in the details below and we'll match you to the nearest verified driver.
-        </p>
+    <div className="max-w-5xl mx-auto pb-12">
+      {/* ── Progress bar ── */}
+      <div className="mb-8">
+        <div className="flex items-center">
+          {STEP_LABELS.map((label, i) => {
+            const n = i + 1
+            const isDone = n < step
+            const isActive = n === step
+            return (
+              <div key={n} className="flex items-center flex-1">
+                <div className="flex flex-col items-center gap-1">
+                  <div
+                    className={`w-7 h-7 rounded-full border-2 flex items-center justify-center text-xs font-bold transition-all ${
+                      isDone || isActive
+                        ? 'border-primary bg-primary text-white'
+                        : 'border-charcoal/20 bg-white text-charcoal/40'
+                    }`}
+                  >
+                    {isDone ? '✓' : n}
+                  </div>
+                  <span
+                    className={`text-[10px] font-semibold uppercase tracking-wide whitespace-nowrap ${
+                      isActive ? 'text-primary' : 'text-charcoal/40'
+                    }`}
+                  >
+                    {label}
+                  </span>
+                </div>
+                {i < STEP_LABELS.length - 1 && (
+                  <div
+                    className={`flex-1 h-0.5 mx-2 mb-4 transition-all ${
+                      n < step ? 'bg-primary' : 'bg-charcoal/15'
+                    }`}
+                  />
+                )}
+              </div>
+            )
+          })}
+        </div>
       </div>
 
       <div className="grid lg:grid-cols-[1fr_300px] gap-8 items-start">
-        {/* ── Left column: form steps ── */}
-        <div className="space-y-5">
+        {/* ── Step pages ── */}
+        <div>
 
-          {/* Step 1: Waste type */}
-          <Card step={1} title="What needs hauling?">
-            <div className="grid grid-cols-3 gap-3">
-              {WASTE_TYPES.map((w) => (
-                <Tile
-                  key={w.value}
-                  active={wasteType === w.value}
-                  onClick={() => setWasteType(w.value)}
-                  icon={w.icon}
-                  title={w.label}
-                  desc={w.desc}
-                />
-              ))}
-            </div>
-          </Card>
+          {/* Step 1: Service */}
+          {step === 1 && (
+            <StepCard
+              step={1}
+              title="What needs hauling?"
+              sub="Select the type of tank and its size"
+              onNext={() => goStep(2)}
+            >
+              <div className="grid grid-cols-3 gap-3">
+                {WASTE_TYPES.map((w) => (
+                  <Tile
+                    key={w.value}
+                    active={wasteType === w.value}
+                    onClick={() => setWasteType(w.value)}
+                    icon={w.icon}
+                    title={w.label}
+                    desc={w.desc}
+                  />
+                ))}
+              </div>
 
-          {/* Step 2: Volume tier */}
-          <Card step={2} title="How big is the tank?">
-            <div className="grid grid-cols-3 gap-3">
-              {TIERS.map((t) => (
-                <Tile
-                  key={t.value}
-                  active={tier === t.value}
-                  onClick={() => setTier(t.value)}
-                  icon={t.icon}
-                  title={t.label}
-                  desc={t.range}
-                />
-              ))}
-            </div>
-          </Card>
+              <SectionDivider>Tank size</SectionDivider>
 
-          {/* Step 3: Location */}
-          <Card step={3} title="Where are we picking up?">
-            <div className="space-y-4">
-              {/* Town + locate row */}
-              <div className="flex gap-3">
-                <div className="flex-1">
-                  <label className="text-xs font-semibold text-charcoal/60 uppercase tracking-wide mb-1 block">
-                    Town / Area
-                  </label>
-                  <select
-                    className="input w-full"
-                    value={regionId ?? ''}
-                    onChange={(e) => setRegionId(Number(e.target.value))}
-                  >
-                    <option value="" disabled>
-                      {regions.isLoading ? 'Loading…' : 'Select a town'}
-                    </option>
-                    {regions.data?.map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {r.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="flex items-end">
+              <div className="grid grid-cols-3 gap-3">
+                {TIERS.map((t) => (
                   <button
+                    key={t.value}
                     type="button"
-                    onClick={locate}
-                    disabled={locating}
-                    className="whitespace-nowrap border-2 border-primary text-primary font-semibold px-4 py-2.5 rounded-lg hover:bg-primary hover:text-white disabled:opacity-60 transition flex items-center gap-2 text-sm"
+                    onClick={() => setTier(t.value)}
+                    className={`text-left p-4 rounded-xl border-2 transition ${
+                      tier === t.value
+                        ? 'border-primary bg-primary/5 shadow-sm'
+                        : 'border-charcoal/10 hover:border-charcoal/25 bg-white'
+                    }`}
                   >
-                    {locating ? '📡 Locating…' : '📍 Use my location'}
+                    <div className="font-bold text-charcoal text-sm">{t.label}</div>
+                    <div className="text-xs text-charcoal/55 mt-0.5">{t.range}</div>
+                    <div className="mt-3 h-1 rounded-full bg-charcoal/10 overflow-hidden">
+                      <div className="h-full bg-primary rounded-full" style={{ width: t.fill }} />
+                    </div>
                   </button>
-                </div>
+                ))}
               </div>
+            </StepCard>
+          )}
 
-              {locateError && (
-                <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-                  {locateError}
-                </p>
-              )}
-
-              <div>
-                <label className="text-xs font-semibold text-charcoal/60 uppercase tracking-wide mb-1 block">
-                  Address <span className="normal-case font-normal">(optional but helpful)</span>
-                </label>
-                <input
-                  className="input w-full"
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                  placeholder="House 12, ABC Street, Tema"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-charcoal/60 uppercase tracking-wide mb-1 block">
-                  Notes for driver <span className="normal-case font-normal">(optional)</span>
-                </label>
-                <textarea
-                  rows={2}
-                  className="input w-full resize-none"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Gate code, parking info, access instructions…"
-                />
-              </div>
-
-              {/* Coordinates — collapsed by default */}
-              <button
-                type="button"
-                onClick={() => setShowCoords((v) => !v)}
-                className="text-xs text-charcoal/50 hover:text-primary transition"
-              >
-                {showCoords ? '▲ Hide coordinates' : '▼ Edit coordinates manually'}
-              </button>
-              {showCoords && (
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-xs font-semibold text-charcoal/60 uppercase tracking-wide mb-1 block">Latitude</label>
-                    <input className="input w-full font-mono" value={lat} onChange={(e) => setLat(e.target.value)} />
+          {/* Step 2: Location */}
+          {step === 2 && (
+            <StepCard
+              step={2}
+              title="Where are we picking up?"
+              sub="Help us find the nearest available driver"
+              onBack={() => goStep(1)}
+              onNext={() => goStep(3)}
+            >
+              <div className="space-y-4">
+                <div>
+                  <label className="text-xs font-semibold text-charcoal/60 uppercase tracking-wide mb-1 block">
+                    Town / Area <span className="text-red-500 normal-case font-bold">*</span>
+                  </label>
+                  <div className="flex gap-3">
+                    <select
+                      className="input flex-1"
+                      value={regionId ?? ''}
+                      onChange={(e) => setRegionId(Number(e.target.value))}
+                    >
+                      <option value="" disabled>
+                        {regions.isLoading ? 'Loading…' : 'Select your town or area…'}
+                      </option>
+                      {regions.data?.map((r) => (
+                        <option key={r.id} value={r.id}>{r.name}</option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={locate}
+                      disabled={locating}
+                      className="whitespace-nowrap border-2 border-primary text-primary font-semibold px-4 py-2.5 rounded-lg hover:bg-primary hover:text-white disabled:opacity-60 transition flex items-center gap-2 text-sm"
+                    >
+                      {locating ? '📡 Locating…' : '📍 Use my location'}
+                    </button>
                   </div>
-                  <div>
-                    <label className="text-xs font-semibold text-charcoal/60 uppercase tracking-wide mb-1 block">Longitude</label>
-                    <input className="input w-full font-mono" value={lng} onChange={(e) => setLng(e.target.value)} />
-                  </div>
+                  {locateError && (
+                    <p className="mt-1.5 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                      {locateError}
+                    </p>
+                  )}
                 </div>
-              )}
-            </div>
-          </Card>
 
-          {/* Step 4: Site survey */}
-          <Card step={4} title="Help your driver prepare">
-            <p className="text-sm text-charcoal/60 -mt-1 mb-5">
-              These details help us send the right truck and avoid surprises on the day.
-            </p>
+                <div>
+                  <label className="text-xs font-semibold text-charcoal/60 uppercase tracking-wide mb-1 block">
+                    Street address <span className="normal-case font-normal">(optional)</span>
+                  </label>
+                  <input
+                    className="input w-full"
+                    value={address}
+                    onChange={(e) => setAddress(e.target.value)}
+                    placeholder="e.g. House 12, ABC Street, Tema"
+                  />
+                </div>
 
-            <div className="space-y-6">
-              {/* Group A: Gate & access */}
-              <SurveyGroup label="Gate & access">
-                <SurveyRow label="Will the truck fit through your gate?" hint="Standard truck: ~2.4 m wide, 3 m tall">
+                <div>
+                  <label className="text-xs font-semibold text-charcoal/60 uppercase tracking-wide mb-1 block">
+                    Notes for driver <span className="normal-case font-normal">(optional)</span>
+                  </label>
+                  <textarea
+                    rows={3}
+                    className="input w-full resize-none"
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    placeholder="Gate code, landmark, parking info, access instructions…"
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowCoords((v) => !v)}
+                  className="text-xs text-charcoal/50 hover:text-primary transition flex items-center gap-1"
+                >
+                  {showCoords ? '▲' : '▼'} Edit GPS coordinates manually
+                </button>
+                {showCoords && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-semibold text-charcoal/60 uppercase tracking-wide mb-1 block">Latitude</label>
+                      <input className="input w-full font-mono" value={lat} onChange={(e) => setLat(e.target.value)} />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-charcoal/60 uppercase tracking-wide mb-1 block">Longitude</label>
+                      <input className="input w-full font-mono" value={lng} onChange={(e) => setLng(e.target.value)} />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </StepCard>
+          )}
+
+          {/* Step 3: Access */}
+          {step === 3 && (
+            <StepCard
+              step={3}
+              title="Gate & access"
+              sub="Helps us send the right truck and avoid surprises"
+              onBack={() => goStep(2)}
+              onNext={() => goStep(4)}
+            >
+              <div className="space-y-6">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-semibold text-charcoal">Will the truck fit through your gate?</span>
+                    <span className="text-[10px] text-charcoal/40 uppercase font-bold tracking-wide">~2.4 m wide, 3 m tall</span>
+                  </div>
                   <Choices value={gateFits} onChange={(v) => setGateFits(v as GateFit)} options={GATE_FIT_OPTS} />
-                </SurveyRow>
-                <SurveyRow label="Photo of your gate" hint="Required">
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-semibold text-charcoal">Photo of your gate</span>
+                    <span className="text-[10px] uppercase font-bold tracking-wide text-red-500">Required</span>
+                  </div>
                   <PhotoField file={gatePhoto} onFile={setGatePhoto} />
-                </SurveyRow>
-                <SurveyRow label="How close can the truck park to the tank?">
+                </div>
+
+                <div className="space-y-2">
+                  <span className="text-sm font-semibold text-charcoal block">How close can the truck park to the tank?</span>
                   <Choices value={parkingDistance} onChange={(v) => setParkingDistance(v as ParkingDistance)} options={PARKING_OPTS} />
-                </SurveyRow>
-                <SurveyRow label="Will someone be on site to open the gate?">
+                </div>
+
+                <div className="space-y-2">
+                  <span className="text-sm font-semibold text-charcoal block">Will someone be on site to open the gate?</span>
                   <YesNo value={someoneOnSite} onChange={setSomeoneOnSite} />
-                </SurveyRow>
-              </SurveyGroup>
+                </div>
+              </div>
+            </StepCard>
+          )}
 
-              {/* Group B: Tank details */}
-              <SurveyGroup label="Tank details">
-                <SurveyRow label="Where is the septic / waste tank?">
+          {/* Step 4: Tank details + scheduling */}
+          {step === 4 && (
+            <StepCard
+              step={4}
+              title="Tank details & scheduling"
+              sub="A few last details so the driver comes prepared"
+              onBack={() => goStep(3)}
+              isLast
+              canSubmit={canSubmit}
+              submitting={submit.isPending}
+              onSubmit={() => submit.mutate()}
+              submitError={submit.isError}
+            >
+              <div className="space-y-6">
+                <SectionDivider>Tank info</SectionDivider>
+
+                <div className="space-y-2">
+                  <span className="text-sm font-semibold text-charcoal block">Where is the septic / waste tank?</span>
                   <Choices value={tankLocation} onChange={(v) => setTankLocation(v as TankLocation)} options={TANK_LOCATION_OPTS} />
-                </SurveyRow>
-                <SurveyRow label="Tank cover condition">
-                  <Choices value={tankCoverState} onChange={(v) => setTankCoverState(v as TankCoverState)} options={TANK_COVER_OPTS} />
-                </SurveyRow>
-                <SurveyRow label="Photo of tank cover / manhole" hint="Optional">
-                  <PhotoField file={tankCoverPhoto} onFile={setTankCoverPhoto} />
-                </SurveyRow>
-                <SurveyRow label="When was the tank last emptied?">
-                  <Choices value={lastEmptied} onChange={(v) => setLastEmptied(v as LastEmptied)} options={LAST_EMPTIED_OPTS} />
-                </SurveyRow>
-                <SurveyRow label="Is the tank currently overflowing?">
-                  <YesNo value={isOverflowing} onChange={setIsOverflowing} />
-                </SurveyRow>
-              </SurveyGroup>
+                </div>
 
-              {/* Group C: Scheduling */}
-              <SurveyGroup label="Scheduling">
-                <SurveyRow label="Preferred time of day">
+                <div className="space-y-2">
+                  <span className="text-sm font-semibold text-charcoal block">Tank cover condition</span>
+                  <Choices value={tankCoverState} onChange={(v) => setTankCoverState(v as TankCoverState)} options={TANK_COVER_OPTS} />
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-semibold text-charcoal">Photo of tank cover / manhole</span>
+                    <span className="text-[10px] text-charcoal/40 uppercase font-bold tracking-wide">Optional</span>
+                  </div>
+                  <PhotoField file={tankCoverPhoto} onFile={setTankCoverPhoto} />
+                </div>
+
+                <div className="space-y-2">
+                  <span className="text-sm font-semibold text-charcoal block">When was the tank last emptied?</span>
+                  <Choices value={lastEmptied} onChange={(v) => setLastEmptied(v as LastEmptied)} options={LAST_EMPTIED_OPTS} />
+                </div>
+
+                <div className="space-y-2">
+                  <span className="text-sm font-semibold text-charcoal block">Is the tank currently overflowing?</span>
+                  <YesNo value={isOverflowing} onChange={setIsOverflowing} />
+                </div>
+
+                <SectionDivider>Scheduling</SectionDivider>
+
+                <div className="space-y-2">
+                  <span className="text-sm font-semibold text-charcoal block">Preferred time of day</span>
                   <Choices value={preferredTime} onChange={(v) => setPreferredTime(v as PreferredTime)} options={PREFERRED_TIME_OPTS} />
-                </SurveyRow>
-              </SurveyGroup>
-            </div>
-          </Card>
+                </div>
+              </div>
+            </StepCard>
+          )}
         </div>
 
-        {/* ── Right column: quote + submit ── */}
+        {/* ── Sidebar ── */}
         <div className="lg:sticky lg:top-6 space-y-3">
-          {/* Price card */}
           <div className="bg-gradient-to-br from-primary to-[#084d29] text-white rounded-2xl shadow-lg overflow-hidden">
             <div className="p-5">
               <div className="flex items-center justify-between mb-1">
@@ -404,24 +485,17 @@ export function CustomerNewRequest() {
 
               {quote ? (
                 <>
-                  <div className="font-heading text-4xl font-extrabold mt-1">
-                    GHS {quote.total}
-                  </div>
-                  <div className="text-[11px] text-white/60 mt-0.5 mb-4">
-                    Estimate · confirmed at booking
-                  </div>
+                  <div className="font-heading text-4xl font-extrabold mt-1">GHS {quote.total}</div>
+                  <div className="text-[11px] text-white/60 mt-0.5 mb-4">Estimate · confirmed at booking</div>
                   <div className="space-y-2 text-sm border-t border-white/10 pt-4">
                     <PriceRow label="Base fee" value={`GHS ${quote.base_fee}`} />
-                    <PriceRow
-                      label={`Distance (${Number(quote.distance_km).toFixed(1)} km)`}
-                      value={`GHS ${quote.distance_fee}`}
-                    />
+                    <PriceRow label={`Distance (${Number(quote.distance_km).toFixed(1)} km)`} value={`GHS ${quote.distance_fee}`} />
                     <PriceRow label="Tank size fee" value={`GHS ${quote.tier_fee}`} />
                   </div>
                 </>
               ) : (
                 <div className="mt-3 text-sm text-white/60 leading-relaxed">
-                  Select a town and tank size above to see your price estimate.
+                  Select a town and tank size to see your price estimate.
                 </div>
               )}
             </div>
@@ -441,14 +515,11 @@ export function CustomerNewRequest() {
                 </p>
               )}
               {submit.isError && (
-                <p className="mt-2 text-center text-xs text-red-300">
-                  Could not create request. Please try again.
-                </p>
+                <p className="mt-2 text-center text-xs text-red-300">Could not create request. Please try again.</p>
               )}
             </div>
           </div>
 
-          {/* Trust badge */}
           <div className="bg-white border border-charcoal/8 rounded-xl p-4 text-xs text-charcoal/60 leading-relaxed space-y-1.5">
             <div className="flex items-start gap-2">
               <span>🛡️</span>
@@ -457,6 +528,10 @@ export function CustomerNewRequest() {
             <div className="flex items-start gap-2">
               <span>💳</span>
               <span>You're only charged after a driver is confirmed.</span>
+            </div>
+            <div className="flex items-start gap-2">
+              <span>📍</span>
+              <span>Track your driver live once assigned.</span>
             </div>
           </div>
         </div>
@@ -467,65 +542,95 @@ export function CustomerNewRequest() {
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function Card({
+function StepCard({
   step,
   title,
+  sub,
   children,
+  onBack,
+  onNext,
+  isLast,
+  canSubmit,
+  submitting,
+  onSubmit,
+  submitError,
 }: {
   step: number
   title: string
+  sub: string
   children: React.ReactNode
+  onBack?: () => void
+  onNext?: () => void
+  isLast?: boolean
+  canSubmit?: boolean
+  submitting?: boolean
+  onSubmit?: () => void
+  submitError?: boolean
 }) {
   return (
     <section className="bg-white border border-charcoal/8 rounded-2xl shadow-sm overflow-hidden">
-      <div className="flex items-center gap-3 px-6 py-4 border-b border-charcoal/6 bg-charcoal/[0.015]">
-        <div className="w-7 h-7 rounded-lg bg-primary text-white grid place-items-center font-heading font-extrabold text-sm flex-shrink-0">
-          {step}
+      <div className="px-6 py-5 border-b border-charcoal/6 bg-gradient-to-b from-charcoal/[0.02] to-white">
+        <div className="inline-flex items-center gap-1.5 bg-primary/10 text-primary rounded-full px-3 py-1 text-[11px] font-bold uppercase tracking-wider mb-3">
+          <span className="w-1.5 h-1.5 rounded-full bg-primary" />
+          Step {step} of 4
         </div>
-        <h2 className="font-heading font-bold text-base text-charcoal">{title}</h2>
+        <h2 className="font-heading text-2xl font-bold text-charcoal">{title}</h2>
+        <p className="text-sm text-charcoal/55 mt-1">{sub}</p>
       </div>
+
       <div className="p-6">{children}</div>
+
+      <div className="px-6 py-4 border-t border-charcoal/6 bg-charcoal/[0.015] flex items-center justify-between">
+        {onBack ? (
+          <button
+            type="button"
+            onClick={onBack}
+            className="px-5 py-2.5 border-2 border-charcoal/15 rounded-full text-sm font-medium text-charcoal/60 hover:border-charcoal/30 hover:text-charcoal transition"
+          >
+            ← Back
+          </button>
+        ) : (
+          <div />
+        )}
+
+        {isLast ? (
+          <div className="flex flex-col items-end gap-1">
+            <button
+              type="button"
+              disabled={submitting || !canSubmit}
+              onClick={onSubmit}
+              className="bg-accent text-charcoal font-bold px-7 py-3 rounded-full hover:brightness-110 disabled:opacity-50 transition text-sm"
+            >
+              {submitting ? 'Submitting…' : 'Confirm & find driver →'}
+            </button>
+            {submitError && (
+              <span className="text-xs text-red-600">Could not create request. Please try again.</span>
+            )}
+            {!canSubmit && !submitting && (
+              <span className="text-xs text-charcoal/40">Gate photo required to submit</span>
+            )}
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={onNext}
+            className="bg-primary text-white font-semibold px-7 py-3 rounded-full hover:bg-primary/90 transition flex items-center gap-2 text-sm"
+          >
+            Continue →
+          </button>
+        )}
+      </div>
     </section>
   )
 }
 
-function SurveyGroup({ label, children }: { label: string; children: React.ReactNode }) {
+function SectionDivider({ children }: { children: React.ReactNode }) {
   return (
-    <div>
-      <div className="text-[11px] font-bold uppercase tracking-widest text-primary/70 mb-3">
-        {label}
-      </div>
-      <div className="space-y-4 pl-0">
+    <div className="flex items-center gap-3 my-1">
+      <span className="text-[11px] font-bold uppercase tracking-widest text-charcoal/40 whitespace-nowrap">
         {children}
-      </div>
-    </div>
-  )
-}
-
-function SurveyRow({
-  label,
-  hint,
-  children,
-}: {
-  label: string
-  hint?: string
-  children: React.ReactNode
-}) {
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-semibold text-charcoal">{label}</span>
-        {hint && (
-          <span
-            className={`text-[10px] uppercase font-bold tracking-wide ${
-              hint === 'Required' ? 'text-red-500' : 'text-charcoal/40'
-            }`}
-          >
-            {hint}
-          </span>
-        )}
-      </div>
-      {children}
+      </span>
+      <div className="flex-1 h-px bg-charcoal/10" />
     </div>
   )
 }
@@ -601,13 +706,7 @@ function Choices<T extends string>({
   )
 }
 
-function YesNo({
-  value,
-  onChange,
-}: {
-  value: boolean | null
-  onChange: (v: boolean) => void
-}) {
+function YesNo({ value, onChange }: { value: boolean | null; onChange: (v: boolean) => void }) {
   return (
     <div className="flex gap-2">
       {[
@@ -634,13 +733,7 @@ function YesNo({
   )
 }
 
-function PhotoField({
-  file,
-  onFile,
-}: {
-  file: File | null
-  onFile: (f: File | null) => void
-}) {
+function PhotoField({ file, onFile }: { file: File | null; onFile: (f: File | null) => void }) {
   const previewUrl = file ? URL.createObjectURL(file) : null
   return (
     <div className="flex items-center gap-3">
