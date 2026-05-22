@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { fetchMyRequests } from '@/api/requests'
@@ -25,10 +25,15 @@ const WASTE_ICON: Record<string, string> = {
   industrial: '🏭',
 }
 
+const PAGE_SIZE = 6
+
 export function CustomerRequestList() {
   const [filter, setFilter] = useState<Filter>('all')
+  const [page, setPage] = useState(1)
   const list = useQuery({ queryKey: ['requests', 'mine'], queryFn: fetchMyRequests })
   const data = list.data ?? []
+
+  useEffect(() => { setPage(1) }, [filter])
 
   const counts = useMemo(() => {
     return {
@@ -54,6 +59,9 @@ export function CustomerRequestList() {
       return r.status === 'cancelled' || r.status === 'unfulfilled'
     })
     .sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at))
+
+  const totalPages = Math.ceil(visible.length / PAGE_SIZE)
+  const paged = visible.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
   return (
     <div className="space-y-6">
@@ -111,11 +119,16 @@ export function CustomerRequestList() {
       ) : visible.length === 0 ? (
         <EmptyState filter={filter} />
       ) : (
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {visible.map((sr) => (
-            <RequestCard key={sr.id} sr={sr} seq={seqMap.get(sr.id) ?? sr.id} />
-          ))}
-        </div>
+        <>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {paged.map((sr) => (
+              <RequestCard key={sr.id} sr={sr} seq={seqMap.get(sr.id) ?? sr.id} />
+            ))}
+          </div>
+          {totalPages > 1 && (
+            <Pagination page={page} totalPages={totalPages} onChange={setPage} />
+          )}
+        </>
       )}
     </div>
   )
@@ -176,6 +189,51 @@ function RequestCard({ sr, seq }: { sr: ServiceRequest; seq: number }) {
         </div>
       </div>
     </Link>
+  )
+}
+
+function Pagination({
+  page,
+  totalPages,
+  onChange,
+}: {
+  page: number
+  totalPages: number
+  onChange: (p: number) => void
+}) {
+  const pages = Array.from({ length: totalPages }, (_, i) => i + 1)
+  return (
+    <div className="flex items-center justify-center gap-1.5 pt-2">
+      <button
+        onClick={() => onChange(page - 1)}
+        disabled={page === 1}
+        className="px-3 py-2 rounded-lg text-sm font-semibold border border-charcoal/10 text-charcoal/60 hover:border-charcoal/25 hover:text-charcoal disabled:opacity-30 disabled:pointer-events-none transition"
+      >
+        ← Prev
+      </button>
+
+      {pages.map((p) => (
+        <button
+          key={p}
+          onClick={() => onChange(p)}
+          className={`w-9 h-9 rounded-lg text-sm font-semibold transition ${
+            p === page
+              ? 'bg-primary text-white shadow-sm'
+              : 'border border-charcoal/10 text-charcoal/60 hover:border-charcoal/25 hover:text-charcoal'
+          }`}
+        >
+          {p}
+        </button>
+      ))}
+
+      <button
+        onClick={() => onChange(page + 1)}
+        disabled={page === totalPages}
+        className="px-3 py-2 rounded-lg text-sm font-semibold border border-charcoal/10 text-charcoal/60 hover:border-charcoal/25 hover:text-charcoal disabled:opacity-30 disabled:pointer-events-none transition"
+      >
+        Next →
+      </button>
+    </div>
   )
 }
 

@@ -88,6 +88,32 @@ class Payout(models.Model):
         return f"Payout req={self.request_id} {self.status}"
 
 
+class DisputeMessage(models.Model):
+    ADMIN = "admin"
+    CUSTOMER = "customer"
+    SENDER_CHOICES = [(ADMIN, "Admin"), (CUSTOMER, "Customer")]
+
+    request = models.ForeignKey(
+        "requests_app.ServiceRequest",
+        on_delete=models.CASCADE,
+        related_name="dispute_messages",
+    )
+    sender = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True
+    )
+    sender_type = models.CharField(max_length=10, choices=SENDER_CHOICES)
+    content = models.TextField()
+    attachment_url = models.URLField(blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at"]
+
+    def __str__(self) -> str:
+        return f"DisputeMsg req={self.request_id} from={self.sender_type}"
+
+
 class WebhookEvent(models.Model):
     """Idempotency log for inbound Paystack webhooks."""
 

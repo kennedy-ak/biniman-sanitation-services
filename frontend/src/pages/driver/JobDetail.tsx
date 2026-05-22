@@ -1,15 +1,23 @@
 import { Link, useLocation, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
+import {
+  ArrowLeft, Send, Search, ThumbsUp, Truck, MapPin, Check,
+  Phone, MessageCircle, Droplet, Package, FileText,
+} from 'lucide-react'
 import { fetchDriverHistory, fetchRequest } from '@/api/requests'
 
 const STATUS_STEPS = [
-  { value: 'pending',   label: 'Submitted',       desc: 'Request received' },
-  { value: 'assigned',  label: 'Finding driver',   desc: 'Searching nearby' },
-  { value: 'accepted',  label: 'Accepted',         desc: 'You accepted the job' },
-  { value: 'en_route',  label: 'En route',         desc: 'You were on the way' },
-  { value: 'arrived',   label: 'Arrived',          desc: 'You arrived on site' },
-  { value: 'completed', label: 'Completed',        desc: 'Job done' },
+  { value: 'pending',   label: 'Submitted',      desc: 'Request received',     Icon: Send },
+  { value: 'assigned',  label: 'Finding driver',  desc: 'Searching nearby',     Icon: Search },
+  { value: 'accepted',  label: 'Accepted',        desc: 'You accepted the job', Icon: ThumbsUp },
+  { value: 'en_route',  label: 'En route',        desc: 'You were on the way',  Icon: Truck },
+  { value: 'arrived',   label: 'Arrived',         desc: 'You arrived on site',  Icon: MapPin },
+  { value: 'completed', label: 'Completed',       desc: 'Job done',             Icon: Check },
 ]
+
+const WASTE_LABEL: Record<string, string> = {
+  septic: 'Septic', soak_pit: 'Soak Pit', industrial: 'Industrial',
+}
 
 export function DriverJobDetail() {
   const { id } = useParams<{ id: string }>()
@@ -17,7 +25,6 @@ export function DriverJobDetail() {
   const location = useLocation()
   const stateSeq: number | undefined = (location.state as { seq?: number } | null)?.seq
 
-  // Fallback: derive seq from cached history list if navigated directly
   const historyQuery = useQuery({
     queryKey: ['driver', 'history'],
     queryFn: fetchDriverHistory,
@@ -26,9 +33,9 @@ export function DriverJobDetail() {
   })
   const seq = stateSeq ?? (() => {
     if (!historyQuery.data) return null
-    const jobs = historyQuery.data
-    const idx = jobs.findIndex((j) => j.id === requestId)
-    return idx >= 0 ? jobs.length - idx : null
+    const sorted = [...historyQuery.data].sort((a, b) => +new Date(a.created_at) - +new Date(b.created_at))
+    const idx = sorted.findIndex((j) => j.id === requestId)
+    return idx >= 0 ? idx + 1 : null
   })()
 
   const query = useQuery({
@@ -42,141 +49,221 @@ export function DriverJobDetail() {
 
   const job = query.data
   const earnings = (Number(job.quote_total) - Number(job.commission_amount)).toFixed(2)
-  const currentStepIdx = job.status === 'completed'
+  const isCompleted = job.status === 'completed'
+  const isCancelled = job.status === 'cancelled' || job.status === 'unfulfilled'
+  const currentStepIdx = isCompleted
     ? STATUS_STEPS.length
     : STATUS_STEPS.findIndex((s) => s.value === job.status)
 
-  return (
-    <div className="max-w-2xl space-y-6">
-      <Link
-        to="/driver/history"
-        className="text-sm text-primary hover:underline inline-flex items-center gap-1"
-      >
-        ← Back to history
-      </Link>
+  const wasteLabel = WASTE_LABEL[job.waste_type] ?? job.waste_type.replace('_', ' ')
+  const dateStr = new Date(job.created_at).toLocaleString(undefined, {
+    month: 'long', day: 'numeric', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  })
 
-      {/* Hero */}
-      <div className="relative overflow-hidden bg-gradient-to-br from-primary to-[#084d29] text-white rounded-2xl p-6 shadow-lg">
-        <div className="absolute -right-16 -top-16 w-64 h-64 rounded-full bg-accent/20 blur-3xl" />
-        <div className="relative">
-          <div className="text-xs uppercase tracking-widest text-accent font-bold">
-            {seq != null ? `Ride ${seq}` : `Job #${job.id}`}
+  return (
+    <div className="space-y-5 pb-12">
+
+      {/* ── Breadcrumb ── */}
+      <div className="flex items-center gap-1.5 text-xs text-charcoal/50">
+        <ArrowLeft size={14} />
+        <Link to="/driver/history" className="text-primary hover:underline">History</Link>
+        <span>›</span>
+        <span>{seq != null ? `Ride ${seq}` : `Job #${job.id}`}</span>
+      </div>
+
+      {/* ── Hero card ── */}
+      <div className="bg-primary rounded-2xl overflow-hidden relative">
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{ background: 'radial-gradient(ellipse 65% 160% at 115% 50%, rgba(93,212,160,0.13) 0%, transparent 55%)' }}
+        />
+        <div className="relative px-7 py-6">
+          {/* Top row */}
+          <div className="flex items-start justify-between gap-3 mb-4">
+            <span className="text-[10px] uppercase tracking-[2.5px] text-white/50 font-semibold">
+              {seq != null ? `Ride #${seq}` : `Job #${job.id}`}
+            </span>
+            <span className={`text-[10px] uppercase font-bold px-3 py-1 rounded-full flex items-center gap-1.5 flex-shrink-0 ${
+              isCompleted
+                ? 'bg-white/15 text-white border border-white/20'
+                : isCancelled
+                  ? 'bg-red-500/20 text-red-300 border border-red-500/25'
+                  : 'bg-white/15 text-white/70 border border-white/20'
+            }`}>
+              {isCompleted && (
+                <span className="w-1.5 h-1.5 rounded-full bg-[#6ee7a7] flex-shrink-0" />
+              )}
+              {job.status}
+            </span>
           </div>
-          <h1 className="mt-1 font-heading text-3xl font-extrabold capitalize">
-            {job.waste_type.replace('_', ' ')} · {job.volume_tier} tank
+
+          {/* Title + date */}
+          <h1 className="font-heading text-[28px] text-white tracking-[-0.3px] leading-tight capitalize mb-1">
+            {wasteLabel} · {job.volume_tier} Tank
           </h1>
-          <p className="mt-2 text-sm text-white/70">
-            {new Date(job.created_at).toLocaleString(undefined, {
-              dateStyle: 'medium',
-              timeStyle: 'short',
-            })}
-          </p>
-        </div>
-        <div className="relative mt-4 inline-block bg-white/10 rounded-xl px-5 py-3 border border-white/15">
-          <div className="text-[10px] uppercase tracking-wider text-white/60 font-semibold">
-            Your earnings
+          <p className="text-sm text-white/50 mb-5">{dateStr}</p>
+
+          {/* Stats */}
+          <div className="grid grid-cols-3 gap-3">
+            <div className="bg-white/10 border border-white/15 rounded-xl px-5 py-4">
+              <p className="text-[9px] uppercase tracking-[2px] text-white/50 font-semibold mb-1.5">Your earnings</p>
+              <p className="font-sans font-bold text-[22px] text-[#6ee7a7] leading-none">
+                <span className="text-[11px] font-normal text-white/45 mr-0.5">GHS</span>
+                {earnings}
+              </p>
+              <p className="text-[10px] text-white/35 mt-1.5">After commission</p>
+            </div>
+            <div className="bg-white/10 border border-white/15 rounded-xl px-5 py-4">
+              <p className="text-[9px] uppercase tracking-[2px] text-white/50 font-semibold mb-1.5">Total fare</p>
+              <p className="font-sans font-bold text-[22px] text-white leading-none">
+                <span className="text-[11px] font-normal text-white/45 mr-0.5">GHS</span>
+                {Number(job.quote_total).toFixed(2)}
+              </p>
+              <p className="text-[10px] text-white/35 mt-1.5">Billed to customer</p>
+            </div>
+            <div className="bg-white/10 border border-white/15 rounded-xl px-5 py-4">
+              <p className="text-[9px] uppercase tracking-[2px] text-white/50 font-semibold mb-1.5">Commission</p>
+              <p className="font-sans font-bold text-[22px] text-white leading-none">
+                <span className="text-[11px] font-normal text-white/45 mr-0.5">GHS</span>
+                {Number(job.commission_amount).toFixed(2)}
+              </p>
+              <p className="text-[10px] text-white/35 mt-1.5">15% platform fee</p>
+            </div>
           </div>
-          <div className="font-heading text-2xl font-extrabold">GHS {earnings}</div>
         </div>
       </div>
 
-      {/* Status timeline */}
-      <section className="bg-white border border-charcoal/5 rounded-2xl shadow-sm p-6">
-        <h2 className="font-heading font-bold text-lg">Job timeline</h2>
-        <ol className="mt-5 relative">
-          <div className="absolute left-[15px] top-2 bottom-2 w-0.5 bg-charcoal/10" />
-          <div
-            className="absolute left-[15px] top-2 w-0.5 bg-primary transition-all"
-            style={{ height: `calc(${Math.max(0, currentStepIdx) * 64}px + 12px)` }}
-          />
-          {STATUS_STEPS.map((step, idx) => {
-            const done = currentStepIdx > idx
-            const active = currentStepIdx === idx
-            return (
-              <li key={step.value} className="relative flex items-start gap-4 pb-6 last:pb-0">
-                <span
-                  className={`relative z-10 w-8 h-8 rounded-full grid place-items-center text-xs font-bold flex-shrink-0 transition ${
-                    done
-                      ? 'bg-primary text-white'
-                      : active
-                        ? 'bg-accent text-charcoal ring-4 ring-accent/30'
-                        : 'bg-charcoal/10 text-charcoal/40'
-                  }`}
-                >
-                  {done ? '✓' : idx + 1}
-                </span>
-                <div className="pt-0.5">
-                  <div className={`font-bold ${active ? 'text-primary' : done ? 'text-charcoal' : 'text-charcoal/40'}`}>
-                    {step.label}
-                  </div>
-                  <div className="text-xs text-charcoal/60">{step.desc}</div>
-                </div>
-              </li>
-            )
-          })}
-        </ol>
-      </section>
+      {/* ── Two-column section ── */}
+      <div className="grid grid-cols-2 gap-4 items-start">
 
-      {/* Pickup details */}
-      <section className="bg-white border border-charcoal/5 rounded-2xl shadow-sm p-6">
-        <h2 className="font-heading font-bold text-lg">Pickup details</h2>
-        <div className="mt-4 grid sm:grid-cols-2 gap-4 text-sm">
-          <div>
-            <div className="text-[10px] uppercase tracking-wider text-charcoal/50 font-semibold">Location</div>
-            <div className="mt-1 text-charcoal">
-              📍 {job.pickup_address || `${job.pickup_lat}, ${job.pickup_lng}`}
+        {/* Timeline */}
+        <div className="bg-white border border-charcoal/8 rounded-2xl shadow-sm p-5">
+          <p className="text-[10px] uppercase tracking-[1.5px] text-charcoal/45 font-semibold mb-5">Job timeline</p>
+          <div className="flex flex-col">
+            {STATUS_STEPS.map((step, idx) => {
+              const done   = currentStepIdx > idx
+              const active = currentStepIdx === idx
+              const Icon   = step.Icon
+              return (
+                <div key={step.value} className="flex gap-3">
+                  {/* Left track */}
+                  <div className="flex flex-col items-center w-7 flex-shrink-0">
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center z-10 ${
+                      done || active ? 'bg-primary' : 'bg-charcoal/8 border border-charcoal/12'
+                    }`}>
+                      <Icon size={13} className={done || active ? 'text-white' : 'text-charcoal/30'} />
+                    </div>
+                    {idx < STATUS_STEPS.length - 1 && (
+                      <div className={`w-0.5 flex-1 min-h-[24px] my-0.5 ${done ? 'bg-primary/30' : 'bg-charcoal/8'}`} />
+                    )}
+                  </div>
+                  {/* Body */}
+                  <div className="pb-5 pt-0.5 flex-1">
+                    <p className={`text-[13px] font-semibold leading-none mb-0.5 ${
+                      done ? 'text-charcoal' : active ? 'text-primary' : 'text-charcoal/30'
+                    }`}>
+                      {step.label}
+                    </p>
+                    <p className={`text-[11px] ${done || active ? 'text-charcoal/50' : 'text-charcoal/25'}`}>
+                      {step.desc}
+                    </p>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Right column */}
+        <div className="flex flex-col gap-4">
+
+          {/* Pickup details */}
+          <div className="bg-white border border-charcoal/8 rounded-2xl shadow-sm p-5">
+            <p className="text-[10px] uppercase tracking-[1.5px] text-charcoal/45 font-semibold mb-4">Pickup details</p>
+            <div className="grid grid-cols-2 gap-3">
+              <DetailItem Icon={MapPin} label="Location" value={job.pickup_address || `${job.pickup_lat}, ${job.pickup_lng}`} />
+              <DetailItem Icon={Droplet} label="Waste type" value={wasteLabel} />
+              <DetailItem Icon={Package} label="Volume" value={`${job.volume_tier} Tank`} capitalize />
+              {job.notes && <DetailItem Icon={FileText} label="Notes" value={job.notes} />}
             </div>
           </div>
-          <div>
-            <div className="text-[10px] uppercase tracking-wider text-charcoal/50 font-semibold">Volume</div>
-            <div className="mt-1 text-charcoal capitalize">📦 {job.volume_tier} tank</div>
+
+          {/* Fare breakdown */}
+          <div className="bg-white border border-charcoal/8 rounded-2xl shadow-sm p-5">
+            <p className="text-[10px] uppercase tracking-[1.5px] text-charcoal/45 font-semibold mb-4">Fare breakdown</p>
+            <div className="divide-y divide-charcoal/6">
+              <div className="flex justify-between py-2.5 text-sm">
+                <span className="text-charcoal/55">Total fare</span>
+                <span className="font-semibold text-charcoal font-mono">GHS {Number(job.quote_total).toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between py-2.5 text-sm">
+                <span className="text-charcoal/55">Platform commission</span>
+                <span className="font-semibold text-red-500 font-mono">− GHS {Number(job.commission_amount).toFixed(2)}</span>
+              </div>
+            </div>
+            <div className="flex justify-between items-center pt-4 mt-2 border-t-2 border-primary/10">
+              <span className="text-sm font-semibold text-charcoal">Your earnings</span>
+              <span className="font-sans font-bold text-[22px] text-primary leading-none">
+                <span className="text-[11px] font-normal text-charcoal/40 mr-0.5">GHS</span>
+                {earnings}
+              </span>
+            </div>
           </div>
-          {job.notes && (
-            <div className="sm:col-span-2">
-              <div className="text-[10px] uppercase tracking-wider text-charcoal/50 font-semibold">Notes</div>
-              <div className="mt-1 text-charcoal">📝 {job.notes}</div>
+
+          {/* Customer */}
+          {job.customer && (
+            <div className="bg-white border border-charcoal/8 rounded-2xl shadow-sm p-5">
+              <p className="text-[10px] uppercase tracking-[1.5px] text-charcoal/45 font-semibold mb-4">Customer</p>
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-base flex-shrink-0">
+                  {(job.customer.full_name || job.customer.phone)[0].toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[14px] font-semibold text-charcoal truncate">{job.customer.full_name || 'Customer'}</p>
+                  <p className="text-[12px] text-charcoal/50 mt-0.5 flex items-center gap-1">
+                    <Phone size={11} />
+                    {job.customer.phone}
+                  </p>
+                </div>
+                <div className="flex gap-2 flex-shrink-0">
+                  <button
+                    aria-label="Call customer"
+                    className="w-9 h-9 rounded-xl border border-charcoal/12 bg-white flex items-center justify-center text-charcoal/45 hover:bg-primary/8 hover:text-primary hover:border-primary/20 transition"
+                  >
+                    <Phone size={16} />
+                  </button>
+                  <button
+                    aria-label="Message customer"
+                    className="w-9 h-9 rounded-xl border border-charcoal/12 bg-white flex items-center justify-center text-charcoal/45 hover:bg-primary/8 hover:text-primary hover:border-primary/20 transition"
+                  >
+                    <MessageCircle size={16} />
+                  </button>
+                </div>
+              </div>
             </div>
           )}
-        </div>
-      </section>
 
-      {/* Quote breakdown */}
-      <section className="bg-white border border-charcoal/5 rounded-2xl shadow-sm p-6">
-        <h2 className="font-heading font-bold text-lg">Fare breakdown</h2>
-        <div className="mt-4 space-y-2 text-sm">
-          <Row label="Total fare" value={`GHS ${job.quote_total}`} />
-          <Row label="Platform commission" value={`GHS ${job.commission_amount}`} />
-          <div className="pt-3 mt-2 border-t border-charcoal/10 flex justify-between items-center">
-            <span className="font-bold">Your earnings</span>
-            <span className="font-heading text-2xl font-extrabold text-primary">GHS {earnings}</span>
-          </div>
         </div>
-      </section>
-
-      {/* Customer */}
-      {job.customer && (
-        <section className="bg-white border border-charcoal/5 rounded-2xl shadow-sm p-6">
-          <h2 className="font-heading font-bold text-lg">Customer</h2>
-          <div className="mt-3 flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-primary/10 text-primary grid place-items-center font-bold text-sm">
-              {(job.customer.full_name || job.customer.phone)[0].toUpperCase()}
-            </div>
-            <div>
-              <div className="font-semibold">{job.customer.full_name || 'Customer'}</div>
-              <div className="text-sm text-charcoal/60">{job.customer.phone}</div>
-            </div>
-          </div>
-        </section>
-      )}
+      </div>
     </div>
   )
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+// ── Sub-components ────────────────────────────────────────────────────────────
+
+function DetailItem({
+  Icon, label, value, capitalize = false,
+}: {
+  Icon: React.ElementType; label: string; value: string; capitalize?: boolean
+}) {
   return (
-    <div className="flex justify-between text-charcoal/80">
-      <span>{label}</span>
-      <span className="font-semibold">{value}</span>
+    <div className="flex flex-col gap-1">
+      <span className="text-[10px] uppercase tracking-[1.2px] text-charcoal/40 font-semibold">{label}</span>
+      <span className={`text-[13px] font-medium text-charcoal flex items-center gap-1.5 ${capitalize ? 'capitalize' : ''}`}>
+        <Icon size={13} className="text-primary/70 flex-shrink-0" />
+        {value}
+      </span>
     </div>
   )
 }
