@@ -41,14 +41,30 @@ export interface TopDriver {
   payout: string
 }
 
+export interface DisputeThreadMessage {
+  id: number
+  sender_type: 'admin' | 'customer'
+  sender_name: string
+  content: string
+  attachment_url: string
+  created_at: string
+}
+
 export interface Dispute {
   kind: 'failed_payout' | 'stuck_payout' | 'refund_pending'
   request_id: number
   amount: string
   driver_phone?: string
   customer_phone?: string
+  customer_name?: string
+  momo_number?: string
+  cancel_reason?: string
+  has_cancel_reason?: boolean
+  payment_reference?: string
+  days_pending?: number
   reason?: string
   request_status?: string
+  thread_messages?: DisputeThreadMessage[]
   created_at: string
 }
 
@@ -77,8 +93,27 @@ export async function fetchDisputes() {
   return data
 }
 
-export async function forceRefund(requestId: number) {
-  const { data } = await api.post(`/analytics/requests/${requestId}/refund/`)
+export async function forceRefund(requestId: number, reason: string) {
+  const { data } = await api.post(`/analytics/requests/${requestId}/refund/`, { reason })
+  return data
+}
+
+export async function requestCancelReason(requestId: number) {
+  const { data } = await api.post(`/analytics/requests/${requestId}/request-cancel-reason/`)
+  return data as { ok: boolean }
+}
+
+export async function fetchDisputeThread(requestId: number) {
+  const { data } = await api.get<DisputeThreadMessage[]>(`/analytics/requests/${requestId}/dispute-thread/`)
+  return data
+}
+
+export async function sendDisputeMessage(requestId: number, form: FormData) {
+  const { data } = await api.post<DisputeThreadMessage>(
+    `/analytics/requests/${requestId}/dispute-thread/`,
+    form,
+    { headers: { 'Content-Type': 'multipart/form-data' } },
+  )
   return data
 }
 

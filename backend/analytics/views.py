@@ -22,7 +22,7 @@ from drivers.models import Driver, DriverStatus, VehicleType
 from drivers.permissions import IsAdmin
 from drivers.serializers import DriverSerializer
 from liquidgo.throttles import AdminUserCreateThrottle
-from payments.models import Payment, PaymentStatus, Payout, PayoutStatus
+from payments.models import DisputeMessage, Payment, PaymentStatus, Payout, PayoutStatus
 from payments.services.orchestrator import (
     confirm_payout_success,
     refund_request,
@@ -246,15 +246,29 @@ def disputes(request):
         request__status__in=[
             RequestStatus.CANCELLED.value, RequestStatus.UNFULFILLED.value,
         ],
-    ).select_related("request", "customer")
+    ).select_related("request", "customer").prefetch_related("request__dispute_messages__sender")
+    now_ts = timezone.now()
     for p in refund_pending:
+        phone = p.customer.phone  # E.164: +233XXXXXXXXX
+        momo = "0" + phone[4:] if phone.startswith("+233") else phone
+        messages = [
+            _serialize_dispute_message(m)
+            for m in p.request.dispute_messages.all()
+        ]
         flagged.append(
             {
                 "kind": "refund_pending",
                 "request_id": p.request_id,
                 "amount": str(p.amount),
-                "customer_phone": p.customer.phone,
+                "customer_phone": phone,
+                "customer_name": p.customer.full_name or "",
+                "momo_number": momo,
+                "cancel_reason": p.request.cancel_reason,
+                "has_cancel_reason": bool(p.request.cancel_reason),
                 "request_status": p.request.status,
+                "payment_reference": p.paystack_reference,
+                "days_pending": (now_ts - p.created_at).days,
+                "thread_messages": messages,
                 "created_at": p.created_at.isoformat(),
             }
         )
@@ -262,14 +276,85 @@ def disputes(request):
     return Response(flagged)
 
 
+def _serialize_dispute_message(m: DisputeMessage) -> dict:
+    return {
+        "id": m.id,
+        "sender_type": m.sender_type,
+        "sender_name": (m.sender.full_name or m.sender.phone) if m.sender else "System",
+        "content": m.content,
+        "attachment_url": m.attachment_url,
+        "created_at": m.created_at.isoformat(),
+    }
+
+
 @api_view(["POST"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def force_refund(request, request_id: int):
+    reason = (request.data.get("reason") or "").strip()
+    if not reason:
+        raise ValidationError({"reason": "A reason is required to force a refund."})
     sr = get_object_or_404(ServiceRequest, pk=request_id)
-    refunded = refund_request(sr, reason=f"Admin override by {request.user.phone}")
+    refunded = refund_request(sr, reason=f"Admin override by {request.user.phone}: {reason}")
     if not refunded:
         raise ValidationError("Nothing to refund.")
     return Response({"ok": True, "status": refunded.status})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated, IsAdmin])
+def request_cancel_reason(request, request_id: int):
+    from notifications.services.sms import send_sms
+    sr = get_object_or_404(ServiceRequest, pk=request_id)
+    if sr.status not in {RequestStatus.CANCELLED.value, RequestStatus.UNFULFILLED.value}:
+        raise ValidationError("Request is not cancelled or unfulfilled.")
+    customer = sr.customer
+    name = customer.full_name or "there"
+    msg = (
+        f"Hi {name}, before we process your refund for Request #{sr.id}, "
+        f"could you tell us why you cancelled? Please open the Biniman app to reply."
+    )
+    send_sms(customer.phone, msg)
+    DisputeMessage.objects.create(
+        request=sr,
+        sender=request.user,
+        sender_type=DisputeMessage.ADMIN,
+        content=msg,
+    )
+    return Response({"ok": True})
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated, IsAdmin])
+def dispute_thread(request, request_id: int):
+    sr = get_object_or_404(ServiceRequest, pk=request_id)
+
+    if request.method == "GET":
+        msgs = DisputeMessage.objects.filter(request=sr).select_related("sender")
+        return Response([_serialize_dispute_message(m) for m in msgs])
+
+    # POST — send a message with optional receipt upload
+    from notifications.services.sms import send_sms
+    from drivers.services.storage import upload_document
+
+    content = (request.data.get("message") or "").strip()
+    if not content:
+        raise ValidationError({"message": "Message content is required."})
+
+    attachment_url = ""
+    receipt_file = request.FILES.get("receipt")
+    if receipt_file:
+        result = upload_document(receipt_file, folder="biniman/dispute_receipts")
+        attachment_url = result["url"]
+
+    msg = DisputeMessage.objects.create(
+        request=sr,
+        sender=request.user,
+        sender_type=DisputeMessage.ADMIN,
+        content=content,
+        attachment_url=attachment_url,
+    )
+    send_sms(sr.customer.phone, content)
+    return Response(_serialize_dispute_message(msg), status=201)
 
 
 @api_view(["POST"])

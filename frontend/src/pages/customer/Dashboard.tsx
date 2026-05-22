@@ -6,52 +6,47 @@ import { verifyPayment } from '@/api/payments'
 import { useAuth } from '@/store/auth'
 import type { RequestStatus, ServiceRequest } from '@/types'
 
-const ACTIVE_STATUSES: RequestStatus[] = [
-  'pending',
-  'assigned',
-  'accepted',
-  'en_route',
-  'arrived',
-]
+const ACTIVE_STATUSES: RequestStatus[] = ['pending', 'assigned', 'accepted', 'en_route', 'arrived']
 
 const STATUS_META: Record<RequestStatus, { label: string; tone: string }> = {
-  pending: { label: 'Finding driver', tone: 'bg-amber-100 text-amber-800' },
-  assigned: { label: 'Offering to driver', tone: 'bg-amber-100 text-amber-800' },
-  accepted: { label: 'Driver assigned', tone: 'bg-blue-100 text-blue-800' },
-  en_route: { label: 'En route', tone: 'bg-blue-100 text-blue-800' },
-  arrived: { label: 'Driver arrived', tone: 'bg-purple-100 text-purple-800' },
-  completed: { label: 'Completed', tone: 'bg-green-100 text-green-800' },
-  cancelled: { label: 'Cancelled', tone: 'bg-red-100 text-red-800' },
-  unfulfilled: { label: 'Unfulfilled', tone: 'bg-red-100 text-red-800' },
+  pending:     { label: 'Finding driver',    tone: 'bg-amber-100 text-amber-800' },
+  assigned:    { label: 'Offering to driver',tone: 'bg-amber-100 text-amber-800' },
+  accepted:    { label: 'Driver assigned',   tone: 'bg-blue-100 text-blue-800' },
+  en_route:    { label: 'En route',          tone: 'bg-blue-100 text-blue-800' },
+  arrived:     { label: 'Driver arrived',    tone: 'bg-purple-100 text-purple-800' },
+  completed:   { label: 'Completed',         tone: 'bg-green-100 text-green-800' },
+  cancelled:   { label: 'Cancelled',         tone: 'bg-red-100 text-red-800' },
+  unfulfilled: { label: 'Unfulfilled',       tone: 'bg-red-100 text-red-800' },
+}
+
+const WASTE_ICON: Record<string, string> = {
+  septic: '🚽', soak_pit: '🕳️', industrial: '🏭',
+}
+
+function getGreeting() {
+  const h = new Date().getHours()
+  if (h < 12) return 'Good morning'
+  if (h < 18) return 'Good afternoon'
+  return 'Good evening'
 }
 
 function formatDate(s: string) {
-  return new Date(s).toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-  })
+  return new Date(s).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
 export function CustomerDashboard() {
   const user = useAuth((s) => s.user)
   const navigate = useNavigate()
 
-  // Paystack callback redirects here with ?reference=...&trxref=...
-  // Verify the transaction server-side and forward to the request detail page.
   const [params, setParams] = useSearchParams()
   const paystackRef = params.get('reference') ?? params.get('trxref')
   const verifyMut = useMutation({
     mutationFn: (ref: string) => verifyPayment(ref),
-    onSuccess: (p) => {
-      setParams({}, { replace: true })
-      navigate(`/customer/requests/${p.request}`, { replace: true })
-    },
+    onSuccess: (p) => { setParams({}, { replace: true }); navigate(`/customer/requests/${p.request}`, { replace: true }) },
     onError: () => setParams({}, { replace: true }),
   })
   useEffect(() => {
-    if (paystackRef && !verifyMut.isPending && !verifyMut.isSuccess) {
-      verifyMut.mutate(paystackRef)
-    }
+    if (paystackRef && !verifyMut.isPending && !verifyMut.isSuccess) verifyMut.mutate(paystackRef)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paystackRef])
 
@@ -64,111 +59,135 @@ export function CustomerDashboard() {
     .sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at))
     .slice(0, 5)
 
-  const firstName = user?.full_name?.split(' ')[0]
-  const greeting = getGreeting()
+  const firstName = user?.full_name?.split(' ')[0] ?? 'there'
 
   return (
-    <div className="space-y-8">
-      {/* Header */}
-      <div className="flex flex-wrap justify-between items-start gap-4">
+    <div className="space-y-5 pb-12">
+
+      {/* ── Top bar ── */}
+      <div className="flex flex-wrap justify-between items-end gap-4">
         <div>
-          <div className="text-sm text-charcoal/60">{greeting},</div>
-          <h1 className="font-heading text-3xl md:text-4xl font-extrabold text-charcoal">
-            {firstName || 'there'} 👋
+          <p className="text-xs text-charcoal/45 mb-1">{getGreeting()},</p>
+          <h1 className="font-heading text-[28px] text-charcoal tracking-[-0.4px] leading-none">
+            {firstName} <span className="text-[22px]">👋</span>
           </h1>
-          <p className="mt-1 text-charcoal/60">Here's what's happening with your pickups.</p>
+          <p className="text-sm text-charcoal/45 mt-1.5">Here's what's happening with your pickups.</p>
         </div>
-        <Link
-          to="/customer/new"
-          className="bg-primary text-white font-bold px-5 py-3 rounded-lg hover:bg-primary/90 transition shadow-sm"
-        >
-          + New request
-        </Link>
+        {active ? (
+          <span
+            title="Complete or cancel your active job first"
+            className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary/40 text-white text-sm font-medium rounded-lg cursor-not-allowed select-none"
+          >
+            <span className="text-base leading-none">+</span> New request
+          </span>
+        ) : (
+          <Link
+            to="/customer/new"
+            className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/90 transition whitespace-nowrap"
+          >
+            <span className="text-base leading-none">+</span> New request
+          </Link>
+        )}
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard
-          label="Total jobs"
-          value={requests.length.toString()}
-          icon="📋"
-          accent="bg-primary/10 text-primary"
-        />
-        <StatCard
-          label="Active"
-          value={active ? '1' : '0'}
-          icon="⚡"
-          accent="bg-amber-100 text-amber-700"
-        />
-        <StatCard
-          label="Completed"
-          value={completed.length.toString()}
-          icon="✓"
-          accent="bg-green-100 text-green-700"
-        />
-        <StatCard
-          label="Total spent"
-          value={`GHS ${totalSpent.toFixed(0)}`}
-          icon="💰"
-          accent="bg-accent/15 text-amber-800"
-        />
+      {/* ── Stats bar ── */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {[
+          { icon: '🗂', label: 'Total jobs', value: String(requests.length), ghs: null },
+          { icon: '⚡', label: 'Active', value: active ? '1' : '0', ghs: null },
+          { icon: '✅', label: 'Completed', value: String(completed.length), ghs: null },
+          { icon: '💰', label: 'Total spent', value: null, ghs: totalSpent.toFixed(0) },
+        ].map((s) => (
+          <div
+            key={s.label}
+            className="bg-white border border-charcoal/8 rounded-xl px-5 py-4 flex items-center gap-4"
+          >
+            <span className="text-xl flex-shrink-0">{s.icon}</span>
+            <div>
+              <p className="text-[9.5px] uppercase tracking-[1.8px] text-charcoal/45 font-medium mb-0.5">{s.label}</p>
+              {s.ghs != null ? (
+                <p className="font-heading text-[24px] leading-none text-charcoal">
+                  <span className="font-sans text-xs font-normal text-charcoal/40 mr-0.5">GHS</span>
+                  {s.ghs}
+                </p>
+              ) : (
+                <p className="font-heading text-[24px] leading-none text-charcoal">{s.value}</p>
+              )}
+            </div>
+          </div>
+        ))}
       </div>
 
-      {/* Active job hero or empty CTA */}
+      {/* ── CTA / Active job banner ── */}
       {active ? (
-        <ActiveJobCard req={active} />
+        <ActiveJobBanner req={active} />
       ) : (
-        <EmptyCTA />
+        <div className="bg-primary rounded-2xl overflow-hidden relative">
+          <div
+            className="absolute inset-0 pointer-events-none"
+            style={{ background: 'radial-gradient(ellipse 60% 150% at 110% 50%, rgba(93,212,160,0.10) 0%, transparent 55%)' }}
+          />
+          <div className="relative flex items-center justify-between gap-6 px-7 py-6">
+            <div>
+              <p className="text-[9px] uppercase tracking-[2.5px] text-[#7aad8e] font-medium mb-1.5">Ready when you are</p>
+              <h2 className="font-heading text-[22px] text-white mb-1.5 tracking-[-0.3px]">Need a pickup?</h2>
+              <p className="text-sm text-white/50 max-w-md">
+                Tell us your location, waste type, and tank size. We'll match the closest verified driver in minutes.
+              </p>
+            </div>
+            <Link
+              to="/customer/new"
+              className="flex-shrink-0 px-5 py-2.5 bg-white text-primary font-semibold text-sm rounded-lg hover:bg-[#c8e6d4] transition whitespace-nowrap"
+            >
+              Start request →
+            </Link>
+          </div>
+        </div>
       )}
 
-      {/* Recent + Tips */}
-      <div className="grid lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-white border border-charcoal/5 rounded-2xl shadow-sm">
-          <div className="flex items-center justify-between p-5 border-b border-charcoal/5">
-            <h2 className="font-heading font-bold text-lg">Recent requests</h2>
-            <Link to="/customer/requests" className="text-sm text-primary hover:underline">
+      {/* ── Bottom grid: recent requests + tips ── */}
+      <div className="grid lg:grid-cols-[1fr_300px] gap-4 items-start">
+
+        {/* Recent requests */}
+        <div className="bg-white border border-charcoal/8 rounded-2xl overflow-hidden shadow-sm">
+          <div className="px-5 py-4 border-b border-charcoal/6 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-charcoal">Recent requests</h2>
+            <Link to="/customer/requests" className="text-sm text-primary font-medium hover:underline">
               View all →
             </Link>
           </div>
+
           {list.isLoading ? (
-            <div className="p-6 text-charcoal/60 text-sm">Loading…</div>
+            <div className="p-6 text-sm text-charcoal/50">Loading…</div>
           ) : recent.length === 0 ? (
-            <div className="p-10 text-center">
+            <div className="py-12 text-center">
               <div className="text-4xl">📭</div>
-              <p className="mt-2 text-charcoal/60 text-sm">No requests yet.</p>
+              <p className="mt-2 text-sm text-charcoal/50">No requests yet.</p>
             </div>
           ) : (
-            <ul className="divide-y divide-charcoal/5">
+            <ul>
               {recent.map((r) => (
-                <li key={r.id}>
+                <li key={r.id} className="border-b border-charcoal/5 last:border-b-0">
                   <Link
                     to={`/customer/requests/${r.id}`}
-                    className="flex items-center gap-4 p-4 hover:bg-charcoal/[0.02] transition"
+                    className="flex items-center gap-3.5 px-5 py-3.5 hover:bg-[#faf8f4] transition"
                   >
-                    <div className="w-10 h-10 rounded-lg bg-primary/10 grid place-items-center text-lg">
-                      {r.waste_type === 'septic'
-                        ? '🚽'
-                        : r.waste_type === 'soak_pit'
-                          ? '🕳️'
-                          : '🏭'}
+                    <div className="w-9 h-9 rounded-[10px] bg-charcoal/5 flex items-center justify-center text-base flex-shrink-0">
+                      {WASTE_ICON[r.waste_type] || '🛢️'}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="font-semibold text-charcoal truncate">
+                      <p className="text-[13.5px] font-medium text-charcoal">
                         #{r.id} · {r.waste_type.replace('_', ' ')} · {r.volume_tier}
-                      </div>
-                      <div className="text-xs text-charcoal/60 truncate">
+                      </p>
+                      <p className="text-xs text-charcoal/45 mt-0.5 truncate">
                         {r.pickup_address || `${r.pickup_lat}, ${r.pickup_lng}`}
-                      </div>
+                      </p>
                     </div>
-                    <div className="text-right">
-                      <span
-                        className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide ${STATUS_META[r.status].tone}`}
-                      >
+                    <div className="text-right flex-shrink-0">
+                      <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-[0.5px] ${STATUS_META[r.status].tone}`}>
                         {STATUS_META[r.status].label}
                       </span>
-                      <div className="text-xs text-charcoal/50 mt-1">
-                        {formatDate(r.created_at)} · GHS {r.quote_total}
-                      </div>
+                      <p className="text-xs text-charcoal/45 mt-1">GHS {r.quote_total} · {formatDate(r.created_at)}</p>
                     </div>
                   </Link>
                 </li>
@@ -177,159 +196,71 @@ export function CustomerDashboard() {
           )}
         </div>
 
-        <div className="space-y-4">
-          <TipCard
-            icon="📍"
-            title="Pin your location"
-            body="Drop a precise pin on the map for faster, accurate matches."
-          />
-          <TipCard
-            icon="⭐"
-            title="Rate your driver"
-            body="After every job, share feedback to keep our network top-quality."
-          />
-          <TipCard
-            icon="💳"
-            title="Pay with MoMo"
-            body="MTN, Vodafone, AirtelTigo all supported via Paystack."
-          />
+        {/* Tips */}
+        <div className="space-y-3">
+          {[
+            { icon: '📍', title: 'Pin your location', desc: 'Drop a precise pin on the map for faster, accurate matches.' },
+            { icon: '⭐', title: 'Rate your driver', desc: 'After every job, share feedback to keep our network top-quality.' },
+            { icon: '📱', title: 'Pay with MoMo', desc: 'MTN, Vodafone, AirtelTigo all supported via Paystack.' },
+          ].map((t) => (
+            <div
+              key={t.title}
+              className="bg-white border border-charcoal/8 rounded-xl px-4 py-4 flex items-start gap-3.5 hover:border-[#7aad8e] transition"
+            >
+              <div className="w-9 h-9 rounded-[10px] bg-charcoal/5 flex items-center justify-center text-[17px] flex-shrink-0">
+                {t.icon}
+              </div>
+              <div>
+                <p className="text-[13px] font-semibold text-charcoal">{t.title}</p>
+                <p className="text-xs text-charcoal/50 leading-relaxed mt-0.5">{t.desc}</p>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     </div>
   )
 }
 
-function getGreeting() {
-  const h = new Date().getHours()
-  if (h < 12) return 'Good morning'
-  if (h < 18) return 'Good afternoon'
-  return 'Good evening'
-}
-
-function StatCard({
-  label,
-  value,
-  icon,
-  accent,
-}: {
-  label: string
-  value: string
-  icon: string
-  accent: string
-}) {
-  return (
-    <div className="bg-white border border-charcoal/5 rounded-2xl p-5 shadow-sm hover:shadow-md transition">
-      <div className={`w-10 h-10 rounded-xl grid place-items-center text-lg ${accent}`}>
-        {icon}
-      </div>
-      <div className="mt-3 text-xs text-charcoal/60 uppercase tracking-wider font-semibold">
-        {label}
-      </div>
-      <div className="mt-1 font-heading text-2xl font-extrabold text-charcoal">
-        {value}
-      </div>
-    </div>
-  )
-}
-
-function ActiveJobCard({ req }: { req: ServiceRequest }) {
+function ActiveJobBanner({ req }: { req: ServiceRequest }) {
   const meta = STATUS_META[req.status]
   return (
-    <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary to-[#084d29] text-white shadow-lg">
-      <div className="absolute -right-16 -top-16 w-64 h-64 rounded-full bg-accent/20 blur-3xl" />
-      <div className="relative p-6 md:p-8">
+    <div className="bg-primary rounded-2xl overflow-hidden relative">
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{ background: 'radial-gradient(ellipse 60% 150% at 110% 50%, rgba(93,212,160,0.10) 0%, transparent 55%)' }}
+      />
+      <div className="relative px-7 py-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <div className="text-xs uppercase tracking-widest text-accent font-bold">
-              Active job
-            </div>
-            <h2 className="mt-2 font-heading text-2xl md:text-3xl font-extrabold">
-              Request #{req.id}
-            </h2>
-            <p className="mt-1 text-white/80 text-sm">
-              {req.waste_type.replace('_', ' ')} · {req.volume_tier} ·{' '}
-              {req.pickup_address || 'Location pinned'}
+            <p className="text-[9px] uppercase tracking-[2.5px] text-[#7aad8e] font-medium mb-1.5">Active job</p>
+            <h2 className="font-heading text-[22px] text-white tracking-[-0.3px]">Request #{req.id}</h2>
+            <p className="text-sm text-white/50 mt-1">
+              {req.waste_type.replace('_', ' ')} · {req.volume_tier} · {req.pickup_address || 'Location pinned'}
             </p>
           </div>
-          <span
-            className={`px-3 py-1.5 rounded-full text-xs font-bold uppercase ${meta.tone}`}
-          >
+          <span className={`px-3 py-1.5 rounded-full text-[10px] font-bold uppercase ${meta.tone}`}>
             {meta.label}
           </span>
         </div>
-
-        <div className="mt-6 grid sm:grid-cols-3 gap-4">
-          <Mini label="Quote" value={`GHS ${req.quote_total}`} />
-          <Mini
-            label="Driver"
-            value={req.driver?.user.full_name || req.driver?.user.phone || 'Searching…'}
-          />
-          <Mini
-            label="Vehicle"
-            value={req.driver?.vehicle_reg || '—'}
-          />
+        <div className="mt-5 grid sm:grid-cols-3 gap-3">
+          {[
+            { label: 'Quote', value: `GHS ${req.quote_total}` },
+            { label: 'Driver', value: req.driver?.user.full_name || req.driver?.user.phone || 'Searching…' },
+            { label: 'Vehicle', value: req.driver?.vehicle_reg || '—' },
+          ].map((m) => (
+            <div key={m.label} className="bg-white/10 border border-white/15 rounded-xl px-4 py-3">
+              <p className="text-[10px] uppercase tracking-wider text-white/50 font-medium">{m.label}</p>
+              <p className="mt-0.5 font-semibold text-white text-sm truncate">{m.value}</p>
+            </div>
+          ))}
         </div>
-
         <Link
           to={`/customer/requests/${req.id}`}
-          className="mt-6 inline-flex items-center gap-2 bg-accent text-charcoal font-bold px-5 py-2.5 rounded-lg hover:brightness-110 transition"
+          className="mt-5 inline-flex items-center gap-2 bg-accent text-charcoal font-bold px-5 py-2.5 rounded-lg hover:brightness-110 transition text-sm"
         >
           Track this job →
         </Link>
-      </div>
-    </div>
-  )
-}
-
-function Mini({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="bg-white/10 backdrop-blur-sm border border-white/15 rounded-xl px-4 py-3">
-      <div className="text-[10px] uppercase tracking-wider text-white/60 font-semibold">
-        {label}
-      </div>
-      <div className="mt-0.5 font-bold truncate">{value}</div>
-    </div>
-  )
-}
-
-function EmptyCTA() {
-  return (
-    <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary/5 via-white to-accent/10 border border-charcoal/5 p-6 md:p-8">
-      <div className="grid md:grid-cols-[1fr_auto] gap-6 items-center">
-        <div>
-          <div className="text-xs uppercase tracking-widest text-primary font-bold">
-            Ready when you are
-          </div>
-          <h2 className="mt-2 font-heading text-2xl md:text-3xl font-extrabold text-charcoal">
-            Need a pickup?
-          </h2>
-          <p className="mt-2 text-charcoal/70 max-w-md">
-            Tell us your location, waste type, and tank size. We'll match the
-            closest verified driver in minutes.
-          </p>
-        </div>
-        <Link
-          to="/customer/new"
-          className="bg-primary text-white font-bold px-6 py-3.5 rounded-lg hover:bg-primary/90 transition shadow-sm whitespace-nowrap"
-        >
-          Start request →
-        </Link>
-      </div>
-    </div>
-  )
-}
-
-function TipCard({ icon, title, body }: { icon: string; title: string; body: string }) {
-  return (
-    <div className="bg-white border border-charcoal/5 rounded-2xl p-5 shadow-sm">
-      <div className="flex items-start gap-3">
-        <div className="w-9 h-9 rounded-lg bg-accent/15 grid place-items-center text-lg flex-shrink-0">
-          {icon}
-        </div>
-        <div>
-          <h3 className="font-bold text-charcoal text-sm">{title}</h3>
-          <p className="mt-1 text-xs text-charcoal/65 leading-relaxed">{body}</p>
-        </div>
       </div>
     </div>
   )

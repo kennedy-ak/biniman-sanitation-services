@@ -96,6 +96,16 @@ def create_request(request):
     if request.user.role not in {Role.CUSTOMER, Role.ADMIN}:
         raise PermissionDenied("Only customers can create requests.")
 
+    active_statuses = [
+        RequestStatus.PENDING, RequestStatus.ASSIGNED,
+        RequestStatus.ACCEPTED, RequestStatus.EN_ROUTE, RequestStatus.ARRIVED,
+    ]
+    if ServiceRequest.objects.filter(
+        customer=request.user,
+        status__in=[s.value for s in active_statuses],
+    ).exists():
+        raise ValidationError({"detail": "You already have an active request. Complete or cancel it before creating a new one."})
+
     serializer = CreateRequestSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
     data = serializer.validated_data
@@ -516,3 +526,65 @@ def regenerate_receipt(request, request_id: int):
 
     generate_receipt.delay(sr.id)
     return Response({"status": "queued"}, status=status.HTTP_202_ACCEPTED)
+
+
+# ── Dispute thread (customer-facing) ─────────────────────────────────────────
+
+
+def _serialize_dispute_message(m) -> dict:
+    return {
+        "id": m.id,
+        "sender_type": m.sender_type,
+        "sender_name": (m.sender.full_name or m.sender.phone) if m.sender else "Support",
+        "content": m.content,
+        "attachment_url": m.attachment_url,
+        "created_at": m.created_at.isoformat(),
+    }
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def dispute_thread(request, request_id: int):
+    from payments.models import DisputeMessage
+    sr = get_object_or_404(ServiceRequest, pk=request_id)
+    if sr.customer_id != request.user.id:
+        raise PermissionDenied()
+    msgs = DisputeMessage.objects.filter(request=sr).select_related("sender")
+    return Response([_serialize_dispute_message(m) for m in msgs])
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def dispute_reply(request, request_id: int):
+    from payments.models import DisputeMessage
+    sr = get_object_or_404(ServiceRequest, pk=request_id)
+    if sr.customer_id != request.user.id:
+        raise PermissionDenied()
+    content = (request.data.get("content") or "").strip()
+    if not content:
+        raise ValidationError({"content": "Reply cannot be empty."})
+    msg = DisputeMessage.objects.create(
+        request=sr,
+        sender=request.user,
+        sender_type=DisputeMessage.CUSTOMER,
+        content=content,
+    )
+    return Response(_serialize_dispute_message(msg), status=status.HTTP_201_CREATED)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def submit_cancel_reason(request, request_id: int):
+    sr = get_object_or_404(ServiceRequest, pk=request_id)
+    if sr.customer_id != request.user.id:
+        raise PermissionDenied()
+    if sr.status not in {RequestStatus.CANCELLED.value, RequestStatus.UNFULFILLED.value}:
+        raise ValidationError("Request is not in a cancellable terminal state.")
+    if sr.cancel_reason:
+        raise ValidationError("A cancellation reason is already recorded.")
+    reason = (request.data.get("reason") or "").strip()
+    if not reason:
+        raise ValidationError({"reason": "Reason is required."})
+    sr.cancel_reason = reason
+    sr.save(update_fields=["cancel_reason"])
+    return Response({"ok": True})

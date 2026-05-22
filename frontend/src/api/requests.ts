@@ -86,6 +86,30 @@ export async function regenerateReceipt(id: number) {
   return data
 }
 
+export interface DisputeThreadMessage {
+  id: number
+  sender_type: 'admin' | 'customer'
+  sender_name: string
+  content: string
+  attachment_url: string
+  created_at: string
+}
+
+export async function fetchDisputeThread(id: number) {
+  const { data } = await api.get<DisputeThreadMessage[]>(`/requests/${id}/dispute-thread/`)
+  return data
+}
+
+export async function replyToDispute(id: number, content: string) {
+  const { data } = await api.post<DisputeThreadMessage>(`/requests/${id}/dispute-reply/`, { content })
+  return data
+}
+
+export async function submitCancelReason(id: number, reason: string) {
+  const { data } = await api.post<{ ok: boolean }>(`/requests/${id}/cancel-reason/`, { reason })
+  return data
+}
+
 // ----- Driver -----
 
 // Backend DecimalField(max_digits=10, decimal_places=7) — round before sending.
