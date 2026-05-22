@@ -177,6 +177,12 @@ CELERY_BROKER_URL = REDIS_URL
 CELERY_RESULT_BACKEND = REDIS_URL
 CELERY_TASK_TIME_LIMIT = 60 * 5
 CELERY_TIMEZONE = TIME_ZONE
+CELERY_BEAT_SCHEDULE = {
+    "recover-stuck-cascades": {
+        "task": "requests_app.tasks.recover_stuck_cascades",
+        "schedule": 120,  # every 2 minutes
+    },
+}
 
 # Cloudinary
 CLOUDINARY = {
