@@ -2,8 +2,8 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
-  Banknote, TrendingUp, RotateCcw, Users, ClipboardList,
-  CheckCircle2, AlertTriangle, TrendingDown, Truck, ShieldCheck,
+  RotateCcw, Users, ClipboardList,
+  AlertTriangle, Truck, ShieldCheck,
   Radio, AlertCircle, Trophy, ChevronRight,
 } from 'lucide-react'
 import { fetchDaily, fetchDisputes, fetchOverview, fetchTopDrivers } from '@/api/analytics'
