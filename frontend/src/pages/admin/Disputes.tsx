@@ -408,7 +408,7 @@ function DisputeThreadPanel({
 
 // ── Message bubble ────────────────────────────────────────────────────────────
 
-function MessageBubble({ msg, side }: { msg: DisputeThreadMessage; side: 'admin' | 'customer' }) {
+function MessageBubble({ msg }: { msg: DisputeThreadMessage; side?: 'admin' | 'customer' }) {
   const isAdmin = msg.sender_type === 'admin'
   return (
     <div className={`flex ${isAdmin ? 'justify-end' : 'justify-start'}`}>
