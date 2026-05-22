@@ -82,6 +82,13 @@ nohup venv/bin/celery -A liquidgo worker -l info \
   > "$LOGDIR/celery.out" 2>&1 &
 echo $! > "$LOGDIR/celery.pid"
 
+echo ">>> celery beat (nohup)"
+pkill -f "celery -A liquidgo beat" || true
+sleep 1
+nohup venv/bin/celery -A liquidgo beat -l info \
+  > "$LOGDIR/celery.beat.out" 2>&1 &
+echo $! > "$LOGDIR/celery.beat.pid"
+
 deactivate
 
 ############### FRONTEND ###############
@@ -114,4 +121,4 @@ echo "DONE."
 echo "  frontend: http://178.238.238.36:8008  -> https://www.binimansanitation.com"
 echo "  backend : http://178.238.238.36:8000  -> https://bini.binimansanitation.com"
 echo "  logs    : $LOGDIR/"
-echo "  stop    : pkill -F $LOGDIR/backend.pid; pkill -F $LOGDIR/celery.pid; pm2 delete liquidgo-frontend"
+echo "  stop    : pkill -F $LOGDIR/backend.pid; pkill -F $LOGDIR/celery.pid; pkill -F $LOGDIR/celery.beat.pid; pm2 delete liquidgo-frontend"

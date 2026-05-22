@@ -62,19 +62,32 @@ def confirm_payment(payment: Payment, *, channel: str = "unknown") -> Payment:
         PaymentMethod.CARD if channel == "card" else PaymentMethod.UNKNOWN
     )
 
+    request_id = payment.request_id
+    reference = payment.paystack_reference
+
     with transaction.atomic():
         payment.status = PaymentStatus.SUCCEEDED
         payment.method = method
         payment.paid_at = timezone.now()
         payment.save(update_fields=["status", "method", "paid_at", "updated_at"])
 
-    from requests_app.tasks import start_cascade
-    start_cascade.delay(payment.request_id)
+        def _queue_cascade():
+            from requests_app.tasks import start_cascade
+            try:
+                start_cascade.delay(request_id)
+                logger.info(
+                    "Payment %s succeeded for req %s — cascade triggered",
+                    reference, request_id,
+                )
+            except Exception:
+                logger.exception(
+                    "CASCADE DISPATCH FAILED for req %s (payment %s) — "
+                    "run: python manage.py retry_cascade %s",
+                    request_id, reference, request_id,
+                )
 
-    logger.info(
-        "Payment %s succeeded for req %s — cascade triggered",
-        payment.paystack_reference, payment.request_id,
-    )
+        transaction.on_commit(_queue_cascade)
+
     return payment
 
 

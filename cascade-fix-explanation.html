@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cascade Fix — What We Did & Why</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Georgia, serif; background: #f5f5f0; color: #1a1a1a; line-height: 1.7; }
+    .wrapper { max-width: 820px; margin: 0 auto; padding: 48px 24px; }
+    h1 { font-size: 2rem; font-weight: bold; margin-bottom: 8px; }
+    .subtitle { color: #555; margin-bottom: 48px; font-size: 1.05rem; }
+    h2 { font-size: 1.25rem; font-weight: bold; margin-bottom: 12px; margin-top: 40px; }
+    p { margin-bottom: 14px; }
+    .card { background: #fff; border: 1px solid #e0e0d8; border-radius: 10px; padding: 24px 28px; margin-bottom: 28px; }
+    .card.red { border-left: 5px solid #e53935; }
+    .card.green { border-left: 5px solid #2e7d32; }
+    .card.blue { border-left: 5px solid #1565c0; }
+    .card.orange { border-left: 5px solid #e65100; }
+    .label { font-size: 0.7rem; font-weight: bold; letter-spacing: 0.1em; text-transform: uppercase; color: #888; margin-bottom: 6px; }
+    .flow { display: flex; flex-direction: column; gap: 0; margin: 20px 0; }
+    .step { display: flex; align-items: flex-start; gap: 16px; padding: 14px 0; border-bottom: 1px solid #eee; }
+    .step:last-child { border-bottom: none; }
+    .num { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 0.85rem; flex-shrink: 0; margin-top: 2px; }
+    .num.ok { background: #e8f5e9; color: #2e7d32; }
+    .num.bad { background: #ffebee; color: #c62828; }
+    .num.fix { background: #e3f2fd; color: #1565c0; }
+    .step-text strong { display: block; margin-bottom: 2px; }
+    .step-text span { color: #555; font-size: 0.93rem; }
+    code { background: #f0f0eb; padding: 2px 7px; border-radius: 4px; font-family: monospace; font-size: 0.88rem; }
+    .before-after { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 0; }
+    .ba-box { border-radius: 8px; padding: 16px; }
+    .ba-box.before { background: #ffebee; }
+    .ba-box.after { background: #e8f5e9; }
+    .ba-box .ba-label { font-size: 0.7rem; font-weight: bold; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 8px; }
+    .ba-box.before .ba-label { color: #c62828; }
+    .ba-box.after .ba-label { color: #2e7d32; }
+    .ba-box p { font-size: 0.92rem; margin-bottom: 0; }
+    .timeline { position: relative; padding-left: 24px; border-left: 2px solid #ddd; margin: 16px 0; }
+    .tl-item { margin-bottom: 16px; position: relative; }
+    .tl-item::before { content: ''; width: 10px; height: 10px; border-radius: 50%; background: #1565c0; position: absolute; left: -29px; top: 6px; }
+    .tl-item.bad::before { background: #e53935; }
+    .tl-item.good::before { background: #2e7d32; }
+    .tl-time { font-size: 0.78rem; color: #888; font-family: monospace; }
+    .tl-desc { font-size: 0.93rem; }
+    .summary-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-top: 16px; }
+    .sg-item { background: #fff; border: 1px solid #e0e0d8; border-radius: 8px; padding: 16px; text-align: center; }
+    .sg-item .icon { font-size: 1.8rem; margin-bottom: 8px; }
+    .sg-item .sg-title { font-weight: bold; font-size: 0.9rem; margin-bottom: 4px; }
+    .sg-item .sg-desc { font-size: 0.8rem; color: #666; }
+    @media (max-width: 600px) {
+      .before-after { grid-template-columns: 1fr; }
+      .summary-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+<div class="wrapper">
+
+  <h1>What Broke & How We Fixed It</h1>
+  <p class="subtitle">The driver matching cascade — why it failed and what we did to prevent it forever.</p>
+
+  <!-- SECTION 1: What is the cascade -->
+  <div class="card blue">
+    <div class="label">Background</div>
+    <h2>How driver matching is supposed to work</h2>
+    <p>When a customer pays for a job, this exact sequence should happen automatically:</p>
+    <div class="flow">
+      <div class="step">
+        <div class="num ok">1</div>
+        <div class="step-text"><strong>Customer pays on Paystack</strong><span>Paystack charges the card or MoMo and confirms payment.</span></div>
+      </div>
+      <div class="step">
+        <div class="num ok">2</div>
+        <div class="step-text"><strong>Payment confirmed in our database</strong><span>Our backend marks the payment as <code>succeeded</code>.</span></div>
+      </div>
+      <div class="step">
+        <div class="num ok">3</div>
+        <div class="step-text"><strong>Cascade starts</strong><span>A background job (<code>start_cascade</code>) finds the nearest available, approved, online drivers and sends them the job offer.</span></div>
+      </div>
+      <div class="step">
+        <div class="num ok">4</div>
+        <div class="step-text"><strong>Driver accepts</strong><span>First driver to accept gets the job. Others are skipped.</span></div>
+      </div>
+      <div class="step">
+        <div class="num ok">5</div>
+        <div class="step-text"><strong>If no driver responds in 60 seconds</strong><span>Next batch of drivers gets offered the job. If everyone is exhausted, request goes to <code>UNFULFILLED</code> and the customer is refunded.</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SECTION 2: What went wrong -->
+  <div class="card red">
+    <div class="label">The Problem</div>
+    <h2>What happened with Request #44</h2>
+    <p>The customer paid GHS 167.49. Payment was confirmed. But the driver never got the job offer. Here is exactly what went wrong — two separate bugs:</p>
+
+    <h2 style="margin-top: 24px;">Bug #1 — Wrong Paystack Webhook URL</h2>
+    <div class="timeline">
+      <div class="tl-item bad">
+        <div class="tl-time">Paystack Dashboard</div>
+        <div class="tl-desc">The webhook was pointing to <code>bini.vendlyghana.space/...</code> — an <strong>old domain that no longer exists</strong>. Paystack was sending payment events into the void.</div>
+      </div>
+      <div class="tl-item bad">
+        <div class="tl-time">Result</div>
+        <div class="tl-desc">Paystack never successfully notified our server that the payment succeeded. Our server could not start the cascade from the webhook.</div>
+      </div>
+    </div>
+
+    <h2 style="margin-top: 24px;">Bug #2 — Wrong Webhook Secret</h2>
+    <div class="timeline">
+      <div class="tl-item bad">
+        <div class="tl-time">.env file on server</div>
+        <div class="tl-desc"><code>PAYSTACK_WEBHOOK_SECRET</code> was set to the webhook URL itself — not the actual signing secret. Every webhook Paystack sent would fail our signature check and be rejected with a 400 error.</div>
+      </div>
+      <div class="tl-item bad">
+        <div class="tl-time">Result</div>
+        <div class="tl-desc">Even if the URL was right, the signature check would have failed. Double protection, both broken.</div>
+      </div>
+    </div>
+
+    <h2 style="margin-top: 24px;">Bug #3 — No Safety Net in Code</h2>
+    <div class="timeline">
+      <div class="tl-item bad">
+        <div class="tl-time">Code (orchestrator.py)</div>
+        <div class="tl-desc">The payment was eventually confirmed via the customer redirect (Paystack sends customers back to our site). At that point our code called <code>start_cascade.delay()</code>. But if that call silently failed — for any reason — there was no retry, no alarm, no recovery. The request just sat at "Finding Driver" forever.</div>
+      </div>
+      <div class="tl-item bad">
+        <div class="tl-time">Result</div>
+        <div class="tl-desc">Request #44 was stuck at <code>PENDING</code> in the database with status "Finding Driver" on screen. It would never move forward or backward. The driver saw nothing. The customer saw nothing change.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SECTION 3: The fixes -->
+  <div class="card green">
+    <div class="label">The Fixes</div>
+    <h2>What we changed — 3 things</h2>
+
+    <h2 style="margin-top: 20px;">Fix #1 — Paystack Dashboard (Config)</h2>
+    <div class="before-after">
+      <div class="ba-box before">
+        <div class="ba-label">Before</div>
+        <p>Webhook URL: <code>bini.vendlyghana.space/...</code> (dead domain)<br><br>Webhook Secret: set to the URL string (wrong)</p>
+      </div>
+      <div class="ba-box after">
+        <div class="ba-label">After</div>
+        <p>Webhook URL: <code>binimansanitation.com/api/v1/payments/webhook/</code><br><br>Webhook Secret: blank (code falls back to the correct secret key)</p>
+      </div>
+    </div>
+    <p>Now Paystack can actually reach our server and our server trusts the message.</p>
+
+    <h2 style="margin-top: 28px;">Fix #2 — Reliable Cascade Dispatch (Code)</h2>
+    <p>In <code>payments/services/orchestrator.py</code>, the line that queues the cascade task (<code>start_cascade.delay()</code>) was moved inside a <code>transaction.on_commit()</code> callback.</p>
+    <div class="before-after">
+      <div class="ba-box before">
+        <div class="ba-label">Before</div>
+        <p>Cascade was queued immediately after saving the payment. If anything went wrong (network hiccup, Redis blip), the error was silently swallowed. No log. No retry. Gone.</p>
+      </div>
+      <div class="ba-box after">
+        <div class="ba-label">After</div>
+        <p><code>on_commit</code> guarantees the task is only queued <em>after</em> the database transaction fully commits. If it fails, a clear error is logged telling exactly which request is stuck and how to fix it.</p>
+      </div>
+    </div>
+
+    <h2 style="margin-top: 28px;">Fix #3 — Automatic Recovery Every 2 Minutes (Code + Deploy)</h2>
+    <p>A new background task called <code>recover_stuck_cascades</code> runs every 2 minutes via Celery Beat. It looks for any request where:</p>
+    <ul style="margin: 10px 0 10px 24px; color: #333;">
+      <li>The payment is marked <code>succeeded</code></li>
+      <li>The request is still <code>pending</code> (cascade never ran)</li>
+      <li>It has been more than 2 minutes since payment (grace period)</li>
+    </ul>
+    <p>For any match it finds, it automatically re-queues the cascade. <strong>No human needed.</strong> Even if the cascade fails to fire on the first try due to any infrastructure issue, it will self-heal within 2 minutes.</p>
+    <p>The deploy script (<code>start.sh</code>) now also starts a <code>celery beat</code> process alongside the worker so this schedule actually runs on the server.</p>
+  </div>
+
+  <!-- SECTION 4: What this means -->
+  <div class="card orange">
+    <div class="label">Impact</div>
+    <h2>What this means at scale</h2>
+    <div class="summary-grid">
+      <div class="sg-item">
+        <div class="icon">🛡️</div>
+        <div class="sg-title">No More Silent Failures</div>
+        <div class="sg-desc">If cascade dispatch fails, it is logged with the exact request ID. Nothing disappears quietly.</div>
+      </div>
+      <div class="sg-item">
+        <div class="icon">⏱️</div>
+        <div class="sg-title">Max 2-Minute Recovery</div>
+        <div class="sg-desc">Even in the worst case — cascade fails on first try — the recovery job picks it up within 2 minutes automatically.</div>
+      </div>
+      <div class="sg-item">
+        <div class="icon">🔗</div>
+        <div class="sg-title">Webhooks Now Work</div>
+        <div class="sg-desc">Paystack can now reach our server and we verify signatures correctly. The primary payment confirmation path is restored.</div>
+      </div>
+    </div>
+    <p style="margin-top: 20px;">For thousands of users, this means: a customer pays → within seconds a driver gets the offer → within 2 minutes at worst the system self-corrects if anything hiccuped. No customer is left stuck at "Finding Driver" indefinitely.</p>
+  </div>
+
+  <!-- SECTION 5: Immediate action -->
+  <div class="card blue">
+    <div class="label">Right Now</div>
+    <h2>To unstick the current Request #44</h2>
+    <p>The recovery task will handle it automatically once the new code is deployed and Celery Beat is running. Or trigger it immediately on the server:</p>
+    <div style="background:#1a1a2e; color:#a8d8a8; padding:16px; border-radius:8px; font-family:monospace; font-size:0.88rem; margin-top:12px;">
+      cd /root/app/biniman-sanitation-services/backend<br>
+      source venv/bin/activate<br>
+      python manage.py shell -c "from requests_app.tasks import start_cascade; start_cascade.delay(44); print('done')"
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

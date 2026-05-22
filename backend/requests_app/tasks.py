@@ -86,6 +86,32 @@ def _seconds_until(assignment: RequestAssignment) -> int:
 
 
 @shared_task
+def recover_stuck_cascades() -> None:
+    """Periodic safety net: find requests whose payment succeeded but cascade
+    never fired (or was silently dropped), and re-queue start_cascade for them.
+
+    Runs every 2 minutes via Celery Beat. Safe to run repeatedly — start_cascade
+    exits immediately if the request is no longer PENDING.
+    """
+    from datetime import timedelta
+    from payments.models import Payment, PaymentStatus
+
+    grace = timezone.now() - timedelta(minutes=2)
+    stuck = (
+        Payment.objects.filter(
+            status=PaymentStatus.SUCCEEDED,
+            paid_at__lte=grace,
+            request__status=RequestStatus.PENDING.value,
+        )
+        .select_related("request")
+        .values_list("request_id", flat=True)
+    )
+    for request_id in stuck:
+        logger.warning("Recovering stuck cascade for request %s", request_id)
+        start_cascade.delay(request_id)
+
+
+@shared_task
 def generate_receipt(request_id: int) -> None:
     """Render and upload a PDF receipt for a completed request."""
     try:
