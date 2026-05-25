@@ -9,6 +9,7 @@ import {
   fetchActiveRequest,
   fetchCurrentOffer,
   fetchDriverPendingRating,
+  pingDriverLocation,
   setDriverOnline,
   transitionStatus,
 } from '@/api/requests'
@@ -198,7 +199,18 @@ export function DriverDashboard() {
       return setDriverOnline({ is_online: turnOn, lat, lng })
     },
     onMutate: () => setToggleError(null),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['driver', 'me'] }),
+    onSuccess: (_, turnOn) => {
+      qc.invalidateQueries({ queryKey: ['driver', 'me'] })
+      // If GPS wasn't ready at toggle time, retry sending location once it is.
+      // This closes the window where the cascade fires before lat/lng is set.
+      if (turnOn && navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (p) => pingDriverLocation(p.coords.latitude, p.coords.longitude).catch(() => {}),
+          undefined,
+          { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 },
+        )
+      }
+    },
     onError: (err: unknown) => setToggleError(toggleErrorMsg(err)),
   })
   const acceptMut = useMutation({
