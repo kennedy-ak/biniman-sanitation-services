@@ -65,6 +65,7 @@ class Driver(models.Model):
 
     # Realtime — switching to PostGIS PointField in Phase 2
     is_online = models.BooleanField(default=False)
+    online_since = models.DateTimeField(null=True, blank=True)
     last_lat = models.DecimalField(max_digits=10, decimal_places=7, null=True, blank=True)
     last_lng = models.DecimalField(max_digits=10, decimal_places=7, null=True, blank=True)
     last_seen_at = models.DateTimeField(null=True, blank=True)

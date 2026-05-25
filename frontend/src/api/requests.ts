@@ -140,6 +140,19 @@ export async function pingDriverLocation(lat: number, lng: number) {
   })
 }
 
+export interface DriverStats {
+  jobs_today: number
+  earned_today: number
+  rating: number | null
+  hours_online: number | null
+  online_since: string | null
+}
+
+export async function fetchDriverStats() {
+  const { data } = await api.get<DriverStats>('/requests/driver/stats/')
+  return data
+}
+
 export async function fetchCurrentOffer() {
   const { data } = await api.get<DriverOffer | null>('/requests/driver/offer/')
   return data

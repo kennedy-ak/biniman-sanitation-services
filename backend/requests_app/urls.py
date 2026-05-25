@@ -17,6 +17,7 @@ urlpatterns = [
     path("<int:request_id>/dispute-reply/", views.dispute_reply, name="dispute-reply"),
     path("<int:request_id>/cancel-reason/", views.submit_cancel_reason, name="cancel-reason"),
     # Driver
+    path("driver/stats/", views.driver_stats, name="driver-stats"),
     path("driver/online/", views.driver_online, name="driver-online"),
     path("driver/ping/", views.driver_ping, name="driver-ping"),
     path("driver/offer/", views.driver_current_offer, name="driver-offer"),

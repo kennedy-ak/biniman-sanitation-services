@@ -276,13 +276,56 @@ def driver_online(request):
     serializer = OnlineToggleSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
     driver = _require_driver(request.user)
-    driver.is_online = serializer.validated_data["is_online"]
+    turning_on = serializer.validated_data["is_online"]
+    driver.is_online = turning_on
     if "lat" in serializer.validated_data and "lng" in serializer.validated_data:
         driver.last_lat = serializer.validated_data["lat"]
         driver.last_lng = serializer.validated_data["lng"]
-    driver.last_seen_at = timezone.now()
-    driver.save(update_fields=["is_online", "last_lat", "last_lng", "last_seen_at"])
+    now = timezone.now()
+    driver.last_seen_at = now
+    if turning_on and not driver.online_since:
+        driver.online_since = now
+    elif not turning_on:
+        driver.online_since = None
+    driver.save(update_fields=["is_online", "online_since", "last_lat", "last_lng", "last_seen_at"])
     return Response({"is_online": driver.is_online})
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated, IsDriver])
+def driver_stats(request):
+    from decimal import Decimal
+    from django.db.models import Sum
+
+    driver = _require_driver(request.user)
+    today_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
+
+    today_qs = ServiceRequest.objects.filter(
+        driver=driver,
+        status=RequestStatus.COMPLETED.value,
+        completed_at__gte=today_start,
+    )
+    jobs_today = today_qs.count()
+    agg = today_qs.aggregate(gross=Sum("quote_total"), commission=Sum("commission_amount"))
+    gross = agg["gross"] or Decimal("0")
+    commission = agg["commission"] or Decimal("0")
+    earned_today = float(gross - commission)
+
+    from ratings.services import aggregate_for_user
+    rating_data = aggregate_for_user(request.user.id)
+    rating = rating_data.get("avg") if rating_data else None
+
+    hours_online = None
+    if driver.is_online and driver.online_since:
+        hours_online = round((timezone.now() - driver.online_since).total_seconds() / 3600, 1)
+
+    return Response({
+        "jobs_today": jobs_today,
+        "earned_today": round(earned_today, 2),
+        "rating": round(rating, 1) if rating else None,
+        "hours_online": hours_online,
+        "online_since": driver.online_since.isoformat() if driver.online_since else None,
+    })
 
 
 @api_view(["POST"])
