@@ -7,7 +7,8 @@
       "PowerShell(Get-Process -Name \"Docker Desktop\" -ErrorAction SilentlyContinue)",
       "PowerShell(Get-Process -Id 24452 -ErrorAction SilentlyContinue; Get-Process -Id 26244 -ErrorAction SilentlyContinue; \\(Get-WmiObject Win32_Process -Filter \"ProcessId=24452\"\\).CommandLine; \\(Get-WmiObject Win32_Process -Filter \"ProcessId=26244\"\\).CommandLine)",
       "Bash(docker stop *)",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(git -C \"C:\\\\Users\\\\User2\\\\Desktop\\\\Biniman\" status)"
     ]
   }
 }

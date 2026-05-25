@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LiquidGo Cascade Bug Report</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: #f4f6f9; color: #1a1a2e; padding: 2rem; }
+    h1 { font-size: 1.6rem; font-weight: 700; margin-bottom: 0.4rem; }
+    .subtitle { color: #555; font-size: 0.9rem; margin-bottom: 2rem; }
+    .bug { background: #fff; border-radius: 12px; border-left: 5px solid #e74c3c; padding: 1.5rem 1.8rem; margin-bottom: 1.5rem; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+    .bug.warning { border-left-color: #e67e22; }
+    .bug.critical { border-left-color: #c0392b; }
+    .bug-header { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.8rem; }
+    .badge { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; padding: 0.25rem 0.6rem; border-radius: 999px; }
+    .badge.high { background: #fde8e8; color: #c0392b; }
+    .badge.critical { background: #c0392b; color: #fff; }
+    .badge.medium { background: #fef0e0; color: #e67e22; }
+    h2 { font-size: 1.05rem; font-weight: 700; }
+    .section-label { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #888; margin: 1rem 0 0.4rem; }
+    p { font-size: 0.9rem; line-height: 1.65; color: #333; }
+    .flow { display: flex; flex-direction: column; gap: 0.3rem; margin-top: 0.5rem; }
+    .step { display: flex; align-items: flex-start; gap: 0.6rem; font-size: 0.85rem; }
+    .step-num { flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%; background: #e74c3c; color: #fff; font-weight: 700; font-size: 0.7rem; display: grid; place-items: center; }
+    .step-num.warn { background: #e67e22; }
+    .step-num.ok { background: #27ae60; }
+    .step-num.dead { background: #95a5a6; }
+    code { font-family: monospace; font-size: 0.8rem; background: #f0f2f5; padding: 0.15rem 0.4rem; border-radius: 4px; color: #c0392b; }
+    .file-ref { font-size: 0.78rem; color: #666; font-family: monospace; background: #f0f2f5; padding: 0.2rem 0.5rem; border-radius: 4px; display: inline-block; margin-top: 0.3rem; }
+    .fix-box { background: #f0faf4; border: 1px solid #a8d5b5; border-radius: 8px; padding: 0.9rem 1.1rem; margin-top: 1rem; }
+    .fix-box p { color: #1e5c35; }
+    .fix-title { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #27ae60; margin-bottom: 0.4rem; }
+    .divider { height: 1px; background: #eee; margin: 1rem 0; }
+  </style>
+</head>
+<body>
+
+  <h1>🐛 LiquidGo — Driver Cascade Bug Report</h1>
+  <p class="subtitle">3 bugs found in the matching cascade + retry flow &nbsp;|&nbsp; Branch: feat/design-updates</p>
+
+  <!-- BUG 1 -->
+  <div class="bug high">
+    <div class="bug-header">
+      <span class="badge high">Bug #1 — High</span>
+      <h2>Retry button appears to do nothing</h2>
+    </div>
+    <span class="file-ref">backend/requests_app/views.py → retry_request() line 256</span>
+
+    <div class="section-label">What happens</div>
+    <p>When the customer clicks <strong>"Find me a driver"</strong> on an UNFULFILLED request, the view calls <code>_dispatch_next_batch(sr)</code> <strong>synchronously</strong>. If no driver is found right now, the cascade marks the request UNFULFILLED again and returns that status to the frontend. The frontend receives UNFULFILLED, stops polling (it's terminal), and the button reappears. From the customer's view — nothing happened.</p>
+
+    <div class="section-label">Code path</div>
+    <div class="flow">
+      <div class="step"><span class="step-num">1</span><span>Customer clicks "Find me a driver" → <code>POST /requests/57/retry/</code></span></div>
+      <div class="step"><span class="step-num">2</span><span>View resets status to PENDING, deletes old assignments</span></div>
+      <div class="step"><span class="step-num">3</span><span>Calls <code>_dispatch_next_batch(sr)</code> <em>synchronously</em> (blocking)</span></div>
+      <div class="step"><span class="step-num">4</span><span>No drivers online within 15 km → <code>candidate_drivers()</code> returns <code>[]</code></span></div>
+      <div class="step"><span class="step-num">5</span><span><code>mark_unfulfilled()</code> runs — status back to UNFULFILLED</span></div>
+      <div class="step"><span class="step-num">6</span><span>Response returns UNFULFILLED → frontend stops polling → looks identical to before click</span></div>
+    </div>
+
+    <div class="fix-box">
+      <div class="fix-title">Fix</div>
+      <p>Replace the synchronous call with <code>start_cascade.delay(sr.id)</code> (Celery async). Return the PENDING response immediately. The frontend resumes its 3-second polling loop and shows "Finding driver…" while Celery searches in the background.</p>
+    </div>
+  </div>
+
+  <!-- BUG 2 -->
+  <div class="bug critical">
+    <div class="bug-header">
+      <span class="badge critical">Bug #2 — Critical</span>
+      <h2>Driver completes job but receives no payout after a retry</h2>
+    </div>
+    <span class="file-ref">backend/requests_app/services/matching.py → mark_unfulfilled() line 219</span>
+
+    <div class="section-label">What happens</div>
+    <p>When a request becomes UNFULFILLED, <code>mark_unfulfilled()</code> <strong>immediately</strong> fires <code>task_refund_request.delay()</code>. The payment transitions from <code>SUCCEEDED → REFUNDED</code>. If the customer then retries and a driver is found, the driver completes the job — but <code>trigger_payout()</code> checks <code>payment.status == SUCCEEDED</code> and finds <code>REFUNDED</code> instead. Payout is silently skipped. The customer has already received their refund <em>and</em> gets the service for free. The driver works for nothing.</p>
+
+    <div class="section-label">Bug timeline</div>
+    <div class="flow">
+      <div class="step"><span class="step-num">1</span><span>Request goes UNFULFILLED → <code>task_refund_request.delay(pk)</code> queued immediately</span></div>
+      <div class="step"><span class="step-num warn">2</span><span>Celery runs task → payment becomes <code>REFUNDED</code> ← money sent back to customer</span></div>
+      <div class="step"><span class="step-num">3</span><span>Customer clicks retry → driver found → driver accepts, drives to location, completes job</span></div>
+      <div class="step"><span class="step-num warn">4</span><span><code>task_trigger_payout</code> fires → <code>trigger_payout()</code> checks payment status</span></div>
+      <div class="step"><span class="step-num dead">5</span><span>Payment is <code>REFUNDED</code>, not <code>SUCCEEDED</code> → payout silently skipped 🚨</span></div>
+    </div>
+
+    <div class="fix-box">
+      <div class="fix-title">Fix</div>
+      <p>In <code>mark_unfulfilled()</code>, delay the refund task by 1 hour using <code>apply_async(countdown=3600)</code> instead of <code>delay()</code>. This gives the customer a grace window to retry before the refund is issued. Payment stays <code>SUCCEEDED</code> during the retry window, so payout works correctly if a driver is found.</p>
+    </div>
+  </div>
+
+  <!-- BUG 3 -->
+  <div class="bug warning">
+    <div class="bug-header">
+      <span class="badge medium">Bug #3 — Medium</span>
+      <h2>Refund task fires even after a successful retry</h2>
+    </div>
+    <span class="file-ref">backend/payments/tasks.py → task_refund_request() line 13</span>
+
+    <div class="section-label">What happens</div>
+    <p><code>task_refund_request</code> never checks whether the request is <em>still</em> UNFULFILLED before calling <code>refund_request()</code>. If a retry succeeds (request moves to ACCEPTED or COMPLETED) while the delayed refund task is sitting in the Celery queue, the task will fire anyway and refund a payment that belongs to an active or completed job.</p>
+
+    <div class="section-label">Code path</div>
+    <div class="flow">
+      <div class="step"><span class="step-num">1</span><span>Request UNFULFILLED → refund task queued with 1 h countdown (after Bug #2 fix)</span></div>
+      <div class="step"><span class="step-num ok">2</span><span>Customer retries within 1 h → driver found → request moves to ACCEPTED → COMPLETED</span></div>
+      <div class="step"><span class="step-num warn">3</span><span>1 h elapses → <code>task_refund_request</code> wakes up in the Celery queue</span></div>
+      <div class="step"><span class="step-num dead">4</span><span>No status check → <code>refund_request()</code> fires → COMPLETED job's payment is refunded 🚨</span></div>
+    </div>
+
+    <div class="fix-box">
+      <div class="fix-title">Fix</div>
+      <p>Add a guard at the top of <code>task_refund_request</code>: re-fetch the request and return early if <code>sr.status != 'unfulfilled'</code>. The refund only fires if the request is genuinely still unfulfilled when the task runs — a successful retry cancels it automatically.</p>
+    </div>
+  </div>
+
+</body>
+</html>

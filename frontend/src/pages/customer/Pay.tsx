@@ -30,7 +30,7 @@ export function CustomerPay() {
     onSuccess: (p) => {
       setPayment(p)
       if (p.status === 'succeeded') {
-        navigate(`/customer/requests/${requestId}`, { replace: true })
+        navigate(`/customer/requests/${requestId}`, { replace: true, state: { justPaid: true } })
         return
       }
       if (p.paystack_authorization_url && !p.paystack_authorization_url.includes('mock')) {
@@ -47,18 +47,18 @@ export function CustomerPay() {
     onSuccess: (p) => {
       setPayment(p)
       if (p.status === 'succeeded') {
-        navigate(`/customer/requests/${requestId}`, { replace: true })
+        navigate(`/customer/requests/${requestId}`, { replace: true, state: { justPaid: true } })
       }
     },
   })
 
   useEffect(() => {
-    if (reqQuery.data && !initiated.current) {
+    if (!initiated.current && Number.isFinite(requestId)) {
       initiated.current = true
       initMut.mutate()
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reqQuery.data])
+  }, [])
 
   if (reqQuery.isLoading)
     return <p className="text-charcoal/60">Loading…</p>
