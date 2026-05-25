@@ -52,12 +52,15 @@ def _compress_image(file_obj: IO) -> tuple[IO, str]:
     return buf, ".jpg"
 
 
-def upload_document(file_obj: IO, folder: str = "biniman/drivers") -> dict:
+def upload_document(file_obj: IO, folder: str = "biniman/drivers", resource_type: str = "auto") -> dict:
     """Upload a file. Returns ``{"url": ..., "public_id": ...}``.
 
     Uses Cloudinary when credentials are set, otherwise saves to MEDIA_ROOT
     on the local VPS disk and returns a full URL via BACKEND_BASE_URL.
     Images are compressed before saving in both paths.
+
+    Pass resource_type="raw" for PDFs/binary files to guarantee public access —
+    "auto" can classify PDFs as restricted depending on the Cloudinary account plan.
     """
     original_name = getattr(file_obj, "name", "") or ""
     ext = os.path.splitext(original_name)[1].lower()
@@ -81,5 +84,10 @@ def upload_document(file_obj: IO, folder: str = "biniman/drivers") -> dict:
     import cloudinary.uploader
 
     cloudinary.config(**settings.CLOUDINARY)
-    result = cloudinary.uploader.upload(file_obj, folder=folder, resource_type="auto")
+    result = cloudinary.uploader.upload(
+        file_obj,
+        folder=folder,
+        resource_type=resource_type,
+        access_mode="public",
+    )
     return {"url": result["secure_url"], "public_id": result["public_id"]}
