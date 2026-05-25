@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   fetchMyDriver,
@@ -49,6 +49,20 @@ export function DriverOnboard() {
   })
   const [toast, setToast] = useState<Toast>(null)
   const [profileSaved, setProfileSaved] = useState(false)
+
+  useEffect(() => {
+    const d = driver.data
+    if (!d) return
+    setForm({
+      vehicle_reg: d.vehicle_reg ?? '',
+      vehicle_type: d.vehicle_type ?? 'medium_tanker',
+      vehicle_capacity_litres: d.vehicle_capacity_litres ?? 3000,
+      license_number: d.license_number ?? '',
+      base_fee: d.base_fee ?? '50.00',
+      momo_number: d.momo_number ?? '',
+      momo_provider: d.momo_provider ?? 'mtn',
+    })
+  }, [driver.data?.id])
 
   const showToast = (t: NonNullable<Toast>) => {
     setToast(t)
