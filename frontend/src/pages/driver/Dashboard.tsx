@@ -237,11 +237,12 @@ export function DriverDashboard() {
     </div>
   )
 
-  const offer    = offerQuery.data ?? null
-  const active   = activeQuery.data ?? null
-  const isOnline = driver.data.is_online
-  const pending  = pendingRatingQuery.data ?? null
-  const idle     = !active && !offer
+  const offer      = offerQuery.data ?? null
+  const active     = activeQuery.data ?? null
+  const isOnline   = driver.data.is_online
+  const hasLocation = driver.data.has_location
+  const pending    = pendingRatingQuery.data ?? null
+  const idle       = !active && !offer
 
   const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 
@@ -298,6 +299,17 @@ export function DriverDashboard() {
           </div>
         </div>
       </div>
+
+      {/* ── No-location warning ── */}
+      {isOnline && !hasLocation && (
+        <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-amber-50 border border-amber-200 text-sm text-amber-800">
+          <span className="text-lg leading-none flex-shrink-0">⚠️</span>
+          <p>
+            <strong>Location not shared.</strong> You're online but your device location hasn't been received —
+            you won't appear in job matching until GPS is enabled and a location ping is sent.
+          </p>
+        </div>
+      )}
 
       {/* ── Stats ── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
