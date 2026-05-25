@@ -38,7 +38,15 @@ export function CustomerRequestDetail() {
   const params = useParams<{ id: string }>()
   const id = Number(params.id)
   const location = useLocation()
-  const stateSeq: number | undefined = (location.state as { seq?: number } | null)?.seq
+  const locationState = location.state as { seq?: number; justPaid?: boolean } | null
+  const stateSeq: number | undefined = locationState?.seq
+
+  // After payment, the cascade might complete before the browser navigates here.
+  // Give it a 30-second window where we keep polling even if the status is terminal,
+  // so the customer sees the "Finding driver" state rather than landing on UNFULFILLED.
+  const [justPaidUntil] = useState<number>(() =>
+    locationState?.justPaid ? Date.now() + 30_000 : 0
+  )
 
   const listQuery = useQuery({
     queryKey: ['requests', 'mine'],
@@ -69,6 +77,7 @@ export function CustomerRequestDetail() {
       const status = data?.status
       if (status === 'completed' && !data?.receipt_url) return 5000
       const terminal = status === 'completed' || status === 'cancelled' || status === 'unfulfilled'
+      if (terminal && Date.now() < justPaidUntil) return 3000
       return terminal ? false : 3000
     },
   })
@@ -262,32 +271,42 @@ export function CustomerRequestDetail() {
 
             {sr.status === 'cancelled' || sr.status === 'unfulfilled' ? (
               <div className="px-6 pb-6 pt-4">
-                <div className={`p-4 rounded-xl border ${
-                  sr.status === 'cancelled'
-                    ? 'bg-red-50 border-red-200 text-red-800'
-                    : 'bg-amber-50 border-amber-200 text-amber-800'
-                }`}>
-                  <div className="font-bold text-sm">
-                    {sr.status === 'cancelled' ? 'Request cancelled' : 'Could not match a driver'}
-                  </div>
-                  <div className="text-sm mt-1 opacity-80">
-                    {sr.status === 'cancelled'
-                      ? sr.cancel_reason || 'No reason provided.'
-                      : 'No drivers were available in your area.'}
-                  </div>
-                  {sr.status === 'unfulfilled' && (
-                    <div className="mt-3">
-                      <button
-                        onClick={() => retryMut.mutate()}
-                        disabled={retryMut.isPending}
-                        className="inline-flex items-center gap-2 bg-primary text-white font-bold px-4 py-2 rounded-lg hover:bg-primary/90 transition disabled:opacity-60 text-sm"
-                      >
-                        {retryMut.isPending ? 'Searching…' : '🔄 Find me a driver'}
-                      </button>
-                      {retryError && <p className="mt-2 text-xs text-red-700">{retryError}</p>}
+                {sr.status === 'unfulfilled' && Date.now() < justPaidUntil ? (
+                  <div className="p-4 rounded-xl border bg-amber-50 border-amber-200 text-amber-800 flex items-center gap-3">
+                    <span className="w-4 h-4 rounded-full border-2 border-amber-500 border-t-transparent animate-spin flex-shrink-0" />
+                    <div>
+                      <div className="font-bold text-sm">Searching for a driver…</div>
+                      <div className="text-sm mt-0.5 opacity-80">We're looking for the nearest available driver. This may take a moment.</div>
                     </div>
-                  )}
-                </div>
+                  </div>
+                ) : (
+                  <div className={`p-4 rounded-xl border ${
+                    sr.status === 'cancelled'
+                      ? 'bg-red-50 border-red-200 text-red-800'
+                      : 'bg-amber-50 border-amber-200 text-amber-800'
+                  }`}>
+                    <div className="font-bold text-sm">
+                      {sr.status === 'cancelled' ? 'Request cancelled' : 'Could not match a driver'}
+                    </div>
+                    <div className="text-sm mt-1 opacity-80">
+                      {sr.status === 'cancelled'
+                        ? sr.cancel_reason || 'No reason provided.'
+                        : 'No drivers were available in your area.'}
+                    </div>
+                    {sr.status === 'unfulfilled' && (
+                      <div className="mt-3">
+                        <button
+                          onClick={() => retryMut.mutate()}
+                          disabled={retryMut.isPending}
+                          className="inline-flex items-center gap-2 bg-primary text-white font-bold px-4 py-2 rounded-lg hover:bg-primary/90 transition disabled:opacity-60 text-sm"
+                        >
+                          {retryMut.isPending ? 'Searching…' : '🔄 Find me a driver'}
+                        </button>
+                        {retryError && <p className="mt-2 text-xs text-red-700">{retryError}</p>}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             ) : (
               <div className="px-6 py-5 space-y-0">
