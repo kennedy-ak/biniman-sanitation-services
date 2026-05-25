@@ -381,6 +381,7 @@ export function CustomerNewRequest() {
               sub="Helps us send the right truck and avoid surprises"
               onBack={() => goStep(2)}
               onNext={() => goStep(4)}
+              canNext={!!gatePhoto}
             >
               <div className="space-y-6">
                 <div className="space-y-2">
@@ -549,6 +550,7 @@ function StepCard({
   children,
   onBack,
   onNext,
+  canNext,
   isLast,
   canSubmit,
   submitting,
@@ -561,6 +563,7 @@ function StepCard({
   children: React.ReactNode
   onBack?: () => void
   onNext?: () => void
+  canNext?: boolean
   isLast?: boolean
   canSubmit?: boolean
   submitting?: boolean
@@ -611,13 +614,19 @@ function StepCard({
             )}
           </div>
         ) : (
-          <button
-            type="button"
-            onClick={onNext}
-            className="bg-primary text-white font-semibold px-7 py-3 rounded-full hover:bg-primary/90 transition flex items-center gap-2 text-sm"
-          >
-            Continue →
-          </button>
+          <div className="flex flex-col items-end gap-1">
+            <button
+              type="button"
+              onClick={onNext}
+              disabled={canNext === false}
+              className="bg-primary text-white font-semibold px-7 py-3 rounded-full hover:bg-primary/90 transition flex items-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Continue →
+            </button>
+            {canNext === false && (
+              <span className="text-xs text-charcoal/40">Gate photo required to continue</span>
+            )}
+          </div>
         )}
       </div>
     </section>
