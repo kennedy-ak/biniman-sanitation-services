@@ -9,6 +9,7 @@ import {
   fetchActiveRequest,
   fetchCurrentOffer,
   fetchDriverPendingRating,
+  fetchDriverStats,
   pingDriverLocation,
   setDriverOnline,
   transitionStatus,
@@ -151,6 +152,12 @@ export function DriverDashboard() {
   const driver = useQuery({ queryKey: ['driver', 'me'], queryFn: fetchMyDriver, retry: false })
   const isApproved = driver.data?.status === 'approved'
 
+  const statsQuery = useQuery({
+    queryKey: ['driver', 'stats'],
+    queryFn: fetchDriverStats,
+    enabled: isApproved,
+    refetchInterval: 30000,
+  })
   const offerQuery = useQuery({
     queryKey: ['driver', 'offer'],
     queryFn: fetchCurrentOffer,
@@ -201,6 +208,7 @@ export function DriverDashboard() {
     onMutate: () => setToggleError(null),
     onSuccess: (_, turnOn) => {
       qc.invalidateQueries({ queryKey: ['driver', 'me'] })
+      qc.invalidateQueries({ queryKey: ['driver', 'stats'] })
       // If GPS wasn't ready at toggle time, retry sending location once it is.
       // This closes the window where the cascade fires before lat/lng is set.
       if (turnOn && navigator.geolocation) {
@@ -223,7 +231,10 @@ export function DriverDashboard() {
   })
   const statusMut = useMutation({
     mutationFn: ({ id, next }: { id: number; next: RequestStatus }) => transitionStatus(id, next),
-    onSuccess: () => qc.refetchQueries({ queryKey: ['driver', 'active'] }),
+    onSuccess: (_, { next }) => {
+      qc.refetchQueries({ queryKey: ['driver', 'active'] })
+      if (next === 'completed') qc.invalidateQueries({ queryKey: ['driver', 'stats'] })
+    },
   })
 
   // ── Non-approved states ──────────────────────────────────────────────────────
@@ -324,12 +335,24 @@ export function DriverDashboard() {
       )}
 
       {/* ── Stats ── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <StatCard accent="#5dd4a0" iconBg="rgba(93,212,160,0.12)" icon={<IC.Check c="#5dd4a0" />} label="Jobs today"   value="—" sub="vs yesterday" />
-        <StatCard accent="#60a5fa" iconBg="rgba(96,165,250,0.12)" icon={<IC.Dollar c="#60a5fa" />} label="Earned today" value="—" prefix="GHS" sub="vs avg" />
-        <StatCard accent="#f59e0b" iconBg="rgba(245,158,11,0.12)" icon={<IC.Clock c="#f59e0b" />} label="Hours online" value="—" sub={`Since ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`} />
-        <StatCard accent="#a78bfa" iconBg="rgba(167,139,250,0.12)" icon={<IC.Star c="#a78bfa" />} label="Rating"        value="—" sub="From trips" />
-      </div>
+      {(() => {
+        const s = statsQuery.data
+        const jobsVal = s ? String(s.jobs_today) : '—'
+        const earnedVal = s ? s.earned_today.toFixed(2) : '—'
+        const ratingVal = s?.rating != null ? String(s.rating) : '—'
+        const hoursVal = s?.hours_online != null ? String(s.hours_online) : '—'
+        const onlineSinceSub = s?.online_since
+          ? `Since ${new Date(s.online_since).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+          : isOnline ? `Since ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Offline'
+        return (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <StatCard accent="#5dd4a0" iconBg="rgba(93,212,160,0.12)" icon={<IC.Check c="#5dd4a0" />} label="Jobs today"   value={jobsVal} sub="completed" />
+            <StatCard accent="#60a5fa" iconBg="rgba(96,165,250,0.12)" icon={<IC.Dollar c="#60a5fa" />} label="Earned today" value={earnedVal} prefix={s ? "GHS" : undefined} sub="after commission" />
+            <StatCard accent="#f59e0b" iconBg="rgba(245,158,11,0.12)" icon={<IC.Clock c="#f59e0b" />} label="Hours online" value={hoursVal} sub={onlineSinceSub} />
+            <StatCard accent="#a78bfa" iconBg="rgba(167,139,250,0.12)" icon={<IC.Star c="#a78bfa" />} label="Rating"        value={ratingVal} sub="From trips" />
+          </div>
+        )
+      })()}
 
       {/* ── Main grid ── */}
       <div className="grid lg:grid-cols-[1fr_300px] gap-4 items-start">
