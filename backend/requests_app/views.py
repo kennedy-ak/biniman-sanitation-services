@@ -222,10 +222,10 @@ def retry_request(request, request_id: int):
     """Re-trigger the matching cascade for an UNFULFILLED request.
 
     The customer already paid, so we skip payment and go straight back to
-    PENDING then run the first cascade dispatch synchronously so the response
-    already reflects whether a driver was found.
+    PENDING and queue the cascade async. The frontend resumes its polling loop
+    and shows "Finding driver…" while Celery searches in the background.
     """
-    from requests_app.tasks import _dispatch_next_batch
+    from requests_app.tasks import start_cascade
 
     sr = get_object_or_404(ServiceRequest, pk=request_id)
     if sr.customer_id != request.user.id:
@@ -249,11 +249,7 @@ def retry_request(request, request_id: int):
         # excluded and the retry cascade goes UNFULFILLED immediately.
         sr.assignments.all().delete()
 
-    # Run the first dispatch inline so the response reflects the real status.
-    # _dispatch_next_batch handles PENDING→ASSIGNED transition and schedules
-    # the Celery timeout task for the new batch.
-    sr.refresh_from_db()
-    _dispatch_next_batch(sr)
+    start_cascade.delay(sr.id)
     sr.refresh_from_db()
     return Response(ServiceRequestSerializer(sr).data)
 

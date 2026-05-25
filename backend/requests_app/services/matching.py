@@ -216,7 +216,10 @@ def mark_unfulfilled(request: ServiceRequest) -> None:
 
     from payments.tasks import task_refund_request
 
-    task_refund_request.delay(request.pk, "Unfulfilled — no driver available")
+    task_refund_request.apply_async(
+        args=[request.pk, "Unfulfilled — no driver available"],
+        countdown=3600,
+    )
 
 
 def expire_batch(batch_uuid: uuid.UUID) -> int:

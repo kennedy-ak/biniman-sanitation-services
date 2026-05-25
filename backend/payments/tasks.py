@@ -4,7 +4,7 @@ import logging
 from celery import shared_task
 
 from payments.services.orchestrator import refund_request, trigger_payout
-from requests_app.models import ServiceRequest
+from requests_app.models import RequestStatus, ServiceRequest
 
 logger = logging.getLogger(__name__)
 
@@ -14,6 +14,8 @@ def task_refund_request(request_id: int, reason: str = "") -> None:
     try:
         sr = ServiceRequest.objects.get(pk=request_id)
     except ServiceRequest.DoesNotExist:
+        return
+    if sr.status != RequestStatus.UNFULFILLED.value:
         return
     refund_request(sr, reason=reason)
 
