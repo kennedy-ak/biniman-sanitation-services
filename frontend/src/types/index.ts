@@ -59,6 +59,7 @@ export interface Driver {
   approved_at: string | null
   is_online: boolean
   last_seen_at: string | null
+  has_location: boolean
   documents: DriverDocument[]
   created_at: string
 }
