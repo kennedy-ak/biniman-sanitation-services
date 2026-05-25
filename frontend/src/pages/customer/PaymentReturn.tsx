@@ -19,7 +19,7 @@ export function CustomerPaymentReturn() {
   const verifyMut = useMutation({
     mutationFn: () => verifyPayment(reference),
     onSuccess: (p) => {
-      navigate(`/customer/requests/${p.request}`, { replace: true })
+      navigate(`/customer/requests/${p.request}`, { replace: true, state: { justPaid: true } })
     },
     onError: () => {
       navigate('/customer/requests', { replace: true })
