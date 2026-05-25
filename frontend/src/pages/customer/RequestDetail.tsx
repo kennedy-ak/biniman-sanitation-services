@@ -269,9 +269,9 @@ export function CustomerRequestDetail() {
               <span className="text-sm font-semibold text-charcoal">Request status</span>
             </div>
 
-            {sr.status === 'cancelled' || sr.status === 'unfulfilled' ? (
+            {sr.status === 'cancelled' || sr.status === 'unfulfilled' || (sr.status === 'pending' && Date.now() < justPaidUntil) ? (
               <div className="px-6 pb-6 pt-4">
-                {sr.status === 'unfulfilled' && Date.now() < justPaidUntil ? (
+                {(sr.status === 'unfulfilled' || sr.status === 'pending') && Date.now() < justPaidUntil ? (
                   <div className="p-4 rounded-xl border bg-amber-50 border-amber-200 text-amber-800 flex items-center gap-3">
                     <span className="w-4 h-4 rounded-full border-2 border-amber-500 border-t-transparent animate-spin flex-shrink-0" />
                     <div>
