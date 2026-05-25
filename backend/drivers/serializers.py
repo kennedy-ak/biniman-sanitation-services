@@ -14,6 +14,10 @@ class DriverDocumentSerializer(serializers.ModelSerializer):
 class DriverSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
     documents = DriverDocumentSerializer(many=True, read_only=True)
+    has_location = serializers.SerializerMethodField()
+
+    def get_has_location(self, obj) -> bool:
+        return obj.last_lat is not None and obj.last_lng is not None
 
     class Meta:
         model = Driver
@@ -22,12 +26,12 @@ class DriverSerializer(serializers.ModelSerializer):
             "vehicle_capacity_litres", "license_number",
             "base_fee", "momo_number", "momo_provider",
             "status", "rejection_reason", "approved_at",
-            "is_online", "last_seen_at",
+            "is_online", "last_seen_at", "has_location",
             "documents", "created_at",
         )
         read_only_fields = (
             "id", "user", "status", "rejection_reason", "approved_at",
-            "is_online", "last_seen_at", "documents", "created_at",
+            "is_online", "last_seen_at", "has_location", "documents", "created_at",
         )
 
 

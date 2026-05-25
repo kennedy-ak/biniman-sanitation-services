@@ -1,6 +1,6 @@
-from django.contrib import admin
+from django.contrib import admin, messages
 
-from .models import RequestAssignment, ServiceRequest
+from .models import RequestAssignment, RequestStatus, ServiceRequest
 
 
 class RequestAssignmentInline(admin.TabularInline):
@@ -8,6 +8,23 @@ class RequestAssignmentInline(admin.TabularInline):
     extra = 0
     readonly_fields = ("driver", "distance_km", "expires_at", "outcome", "decided_at", "created_at")
     can_delete = False
+
+
+@admin.action(description="Retry cascade for selected PENDING requests")
+def retry_cascade_action(modeladmin, request, queryset):
+    from requests_app.tasks import start_cascade
+
+    pending = queryset.filter(status=RequestStatus.PENDING.value)
+    count = 0
+    for sr in pending:
+        start_cascade.delay(sr.pk)
+        count += 1
+    skipped = queryset.count() - count
+    modeladmin.message_user(
+        request,
+        f"Cascade re-queued for {count} request(s). {skipped} skipped (not PENDING).",
+        messages.SUCCESS if count else messages.WARNING,
+    )
 
 
 @admin.register(ServiceRequest)
@@ -20,6 +37,7 @@ class ServiceRequestAdmin(admin.ModelAdmin):
         "completed_at", "cancelled_at",
     )
     inlines = [RequestAssignmentInline]
+    actions = [retry_cascade_action]
 
 
 @admin.register(RequestAssignment)
