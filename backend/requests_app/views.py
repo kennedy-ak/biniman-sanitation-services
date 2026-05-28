@@ -32,7 +32,6 @@ from requests_app.serializers import (
     StatusTransitionSerializer,
 )
 from requests_app.services.broadcast import push_offer_cancelled, push_request_status
-from liquidgo.throttles import ReceiptRegenerateThrottle
 
 
 def _nearest_idle_driver_distance_km(region: Region, lat: float, lng: float) -> float:
@@ -546,25 +545,24 @@ def driver_job_history(request):
     return Response(ServiceRequestSerializer(qs, many=True).data)
 
 
-@api_view(["POST"])
+@api_view(["GET"])
 @permission_classes([IsAuthenticated])
-@throttle_classes([ReceiptRegenerateThrottle])
-def regenerate_receipt(request, request_id: int):
-    """Safety net: re-enqueue PDF generation for a completed request.
+def serve_receipt(request, request_id: int):
+    """Generate and stream the PDF receipt directly — no Cloudinary redirect."""
+    from django.http import HttpResponse
 
-    Allowed for the request's customer and any staff user. Idempotent — the
-    task overwrites `receipt_url` on completion.
-    """
     sr = get_object_or_404(ServiceRequest, pk=request_id)
     if not (request.user == sr.customer or request.user.is_staff):
-        raise PermissionDenied("You may not regenerate this receipt.")
+        raise PermissionDenied("You may not download this receipt.")
     if sr.status != RequestStatus.COMPLETED.value:
         raise ValidationError("Receipt is only available for completed requests.")
 
-    from requests_app.tasks import generate_receipt
+    from requests_app.services.receipt import render_receipt_pdf
 
-    generate_receipt.delay(sr.id)
-    return Response({"status": "queued"}, status=status.HTTP_202_ACCEPTED)
+    pdf_bytes = render_receipt_pdf(sr)
+    response = HttpResponse(pdf_bytes, content_type="application/pdf")
+    response["Content-Disposition"] = f'attachment; filename="receipt-{sr.pk}.pdf"'
+    return response
 
 
 # ── Dispute thread (customer-facing) ─────────────────────────────────────────

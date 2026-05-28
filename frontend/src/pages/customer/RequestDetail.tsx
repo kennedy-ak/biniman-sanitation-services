@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useLocation, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { cancelRequest, fetchMyRequests, fetchRequest, fetchDisputeThread, replyToDispute, submitCancelReason, regenerateReceipt, retryRequest, type DisputeThreadMessage } from '@/api/requests'
+import { cancelRequest, fetchMyRequests, fetchRequest, fetchDisputeThread, replyToDispute, submitCancelReason, downloadReceipt, retryRequest, type DisputeThreadMessage } from '@/api/requests'
 import { useRequestSocket } from '@/hooks/useRequestSocket'
 import { fetchUserSummary } from '@/api/ratings'
 import { RatingForm, Stars } from '@/components/RatingForm'
@@ -65,6 +65,7 @@ export function CustomerRequestDetail() {
   const [showCancel, setShowCancel] = useState(false)
   const [cancelReason, setCancelReason] = useState('')
   const [cancelError, setCancelError] = useState<string | null>(null)
+  const [receiptDownloading, setReceiptDownloading] = useState(false)
   const [receiptError, setReceiptError] = useState<string | null>(null)
   const [retryError, setRetryError] = useState<string | null>(null)
 
@@ -75,7 +76,6 @@ export function CustomerRequestDetail() {
     refetchInterval: (query) => {
       const data = query.state.data
       const status = data?.status
-      if (status === 'completed' && !data?.receipt_url) return 5000
       const terminal = status === 'completed' || status === 'cancelled' || status === 'unfulfilled'
       if (terminal && Date.now() < justPaidUntil) return 3000
       return terminal ? false : 3000
@@ -103,21 +103,17 @@ export function CustomerRequestDetail() {
     },
   })
 
-  const regenMut = useMutation({
-    mutationFn: () => regenerateReceipt(id),
-    onSuccess: () => {
-      setReceiptError(null)
-      qc.invalidateQueries({ queryKey: ['request', id] })
-    },
-    onError: (err: Error & { response?: { data?: { detail?: string }; status?: number } }) => {
-      const data = err.response?.data
-      setReceiptError(
-        data?.detail ?? (err.response?.status === 429
-          ? 'Too many regeneration attempts. Try again later.'
-          : err.message ?? 'Could not regenerate the receipt.'),
-      )
-    },
-  })
+  async function handleDownloadReceipt() {
+    setReceiptDownloading(true)
+    setReceiptError(null)
+    try {
+      await downloadReceipt(id)
+    } catch {
+      setReceiptError('Could not download receipt. Please try again.')
+    } finally {
+      setReceiptDownloading(false)
+    }
+  }
 
   const retryMut = useMutation({
     mutationFn: () => retryRequest(id),
@@ -404,38 +400,16 @@ export function CustomerRequestDetail() {
                 <span className="text-sm font-semibold text-charcoal">Receipt</span>
               </div>
               <div className="px-6 pb-6">
-                {sr.receipt_url ? (
-                  <div className="flex flex-wrap items-center justify-between gap-4">
-                    <div>
-                      <p className="text-sm text-charcoal/60">Your PDF receipt is ready.</p>
-                      {sr.receipt_generated_at && (
-                        <p className="text-xs text-charcoal/40 mt-0.5">
-                          Generated {new Date(sr.receipt_generated_at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
-                        </p>
-                      )}
-                      <button
-                        onClick={() => regenMut.mutate()}
-                        disabled={regenMut.isPending}
-                        className="mt-2 text-xs text-primary hover:underline disabled:opacity-60"
-                      >
-                        {regenMut.isPending ? 'Regenerating…' : 'Regenerate'}
-                      </button>
-                    </div>
-                    <a
-                      href={sr.receipt_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="bg-primary text-white font-bold px-5 py-2.5 rounded-lg hover:bg-primary/90 transition inline-flex items-center gap-2 text-sm"
-                    >
-                      ⬇ Download receipt
-                    </a>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2.5 text-sm text-charcoal/60">
-                    <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-                    Receipt is being prepared… usually takes a few seconds.
-                  </div>
-                )}
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <p className="text-sm text-charcoal/60">Your PDF receipt is ready.</p>
+                  <button
+                    onClick={handleDownloadReceipt}
+                    disabled={receiptDownloading}
+                    className="bg-primary text-white font-bold px-5 py-2.5 rounded-lg hover:bg-primary/90 transition inline-flex items-center gap-2 text-sm disabled:opacity-60"
+                  >
+                    {receiptDownloading ? 'Downloading…' : '⬇ Download receipt'}
+                  </button>
+                </div>
                 {receiptError && (
                   <p className="mt-3 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
                     {receiptError}
