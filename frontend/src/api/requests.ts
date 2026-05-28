@@ -79,11 +79,14 @@ export async function retryRequest(id: number) {
   return data
 }
 
-export async function regenerateReceipt(id: number) {
-  const { data } = await api.post<{ status: string }>(
-    `/requests/${id}/receipt/regenerate/`,
-  )
-  return data
+export async function downloadReceipt(id: number): Promise<void> {
+  const response = await api.get(`/requests/${id}/receipt/`, { responseType: 'blob' })
+  const url = URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }))
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `receipt-${id}.pdf`
+  a.click()
+  URL.revokeObjectURL(url)
 }
 
 export interface DisputeThreadMessage {

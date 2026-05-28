@@ -182,6 +182,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "requests_app.tasks.recover_stuck_cascades",
         "schedule": 120,  # every 2 minutes
     },
+    "auto-offline-stale-drivers": {
+        "task": "requests_app.tasks.auto_offline_stale_drivers",
+        "schedule": 120,  # every 2 minutes — matches the 15-min cutoff in the task
+    },
 }
 
 # Cloudinary

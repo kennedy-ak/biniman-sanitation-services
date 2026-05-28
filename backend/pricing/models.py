@@ -31,7 +31,7 @@ class PricingConfig(models.Model):
     # Dispatch tuning — see requests_app.services.matching
     parallel_offer_count = models.PositiveSmallIntegerField(default=3)
     eta_refine_top_k = models.PositiveSmallIntegerField(default=5)
-    driver_stale_after_seconds = models.PositiveIntegerField(default=300)
+    driver_stale_after_seconds = models.PositiveIntegerField(default=1800)
     rank_weight_distance = models.DecimalField(max_digits=3, decimal_places=2, default=Decimal("0.55"))
     rank_weight_rating = models.DecimalField(max_digits=3, decimal_places=2, default=Decimal("0.25"))
     rank_weight_fairness = models.DecimalField(max_digits=3, decimal_places=2, default=Decimal("0.20"))
