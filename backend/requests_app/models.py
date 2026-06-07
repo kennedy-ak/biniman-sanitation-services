@@ -98,7 +98,11 @@ class ServiceRequest(models.Model):
     )
 
     waste_type = models.CharField(max_length=20, choices=WasteType.choices)
-    volume_tier = models.CharField(max_length=10, choices=[("small","Small"),("medium","Medium"),("large","Large")])
+    volume_tier = models.CharField(
+        max_length=10,
+        choices=[("small", "Small load"), ("medium", "Medium load"), ("full", "Full load")],
+    )
+    num_trips = models.PositiveSmallIntegerField(default=1)
 
     # Location — switching to PostGIS PointField in a later phase
     pickup_lat = models.DecimalField(max_digits=10, decimal_places=7)
@@ -132,12 +136,14 @@ class ServiceRequest(models.Model):
     )
     someone_on_site = models.BooleanField(null=True, blank=True)
 
-    # Quote (snapshot at booking time)
+    # Quote (snapshot at booking time) — loop-distance multiplicative model
     quote_total = models.DecimalField(max_digits=10, decimal_places=2)
     quote_base_fee = models.DecimalField(max_digits=10, decimal_places=2)
     quote_distance_km = models.DecimalField(max_digits=8, decimal_places=2, default=Decimal("0"))
+    quote_billable_distance_km = models.DecimalField(max_digits=8, decimal_places=2, default=Decimal("0"))
     quote_distance_fee = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0"))
-    quote_tier_fee = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0"))
+    quote_volume_multiplier = models.DecimalField(max_digits=4, decimal_places=2, default=Decimal("1"))
+    quote_trips_multiplier = models.DecimalField(max_digits=4, decimal_places=2, default=Decimal("1"))
     commission_amount = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0"))
 
     status = models.CharField(

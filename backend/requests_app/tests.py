@@ -19,7 +19,7 @@ from rest_framework.test import APITestCase
 
 from accounts.models import Region, Role, User
 from drivers.models import Driver, DriverStatus, VehicleType
-from pricing.models import PricingConfig
+from pricing.models import DisposalSite, PricingConfig
 from ratings.models import Rating
 from requests_app.models import (
     AssignmentOutcome,
@@ -91,7 +91,6 @@ def _make_request(customer: User, region: Region, lat: float = 5.6037, lng: floa
         quote_base_fee=Decimal("50"),
         quote_distance_km=Decimal("1.0"),
         quote_distance_fee=Decimal("3"),
-        quote_tier_fee=Decimal("100"),
         commission_amount=Decimal("22.5"),
     )
 
@@ -116,7 +115,8 @@ class MatchingFilterTests(TestCase):
         self.assertEqual(candidate_drivers(self.request), [])
 
     def test_excludes_stale_last_seen(self):
-        _make_driver(phone="+233241110003", last_seen_seconds_ago=999)
+        # driver_stale_after_seconds defaults to 1800; go well past it.
+        _make_driver(phone="+233241110003", last_seen_seconds_ago=2400)
         self.assertEqual(candidate_drivers(self.request), [])
 
     def test_excludes_busy_drivers(self):
@@ -135,10 +135,13 @@ class MatchingFilterTests(TestCase):
         )
         self.assertEqual(candidate_drivers(self.request), [])
 
-    def test_excludes_out_of_radius(self):
-        # ~30km north of pickup, radius is 15km
-        _make_driver(phone="+233241110005", lat=5.87, lng=-0.187)
-        self.assertEqual(candidate_drivers(self.request), [])
+    def test_includes_out_of_radius_no_cap(self):
+        # ~30km north of pickup. matching_radius_km is only a consent threshold
+        # now — there is no hard matching cap, so the driver is still a candidate.
+        d = _make_driver(phone="+233241110005", lat=5.87, lng=-0.187)
+        results = candidate_drivers(self.request)
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0][0].id, d.id)
 
     def test_includes_valid_driver(self):
         d = _make_driver(phone="+233241110006", lat=5.6040, lng=-0.1875)
@@ -322,7 +325,7 @@ class BatchTimeoutTests(TestCase):
         first = offer_to_next_batch(sr)
         self.assertEqual(len(first), 1)
 
-        with patch("payments.tasks.task_refund_request.delay") as refund_mock, \
+        with patch("payments.tasks.task_refund_request.apply_async") as refund_mock, \
                 patch("requests_app.tasks.handle_batch_timeout.apply_async"):
             handle_batch_timeout(str(first[0].batch_uuid))
             refund_mock.assert_called_once()
@@ -364,8 +367,111 @@ class UnfulfilledRefundTests(TestCase):
 
     def test_mark_unfulfilled_fires_refund(self):
         sr = _make_request(self.customer, self.region)
-        with patch("payments.tasks.task_refund_request.delay") as refund_mock:
+        with patch("payments.tasks.task_refund_request.apply_async") as refund_mock:
             mark_unfulfilled(sr)
-            refund_mock.assert_called_once_with(sr.pk, "Unfulfilled — no driver available")
+            refund_mock.assert_called_once_with(
+                args=[sr.pk, "Unfulfilled — no driver available"], countdown=3600
+            )
         sr.refresh_from_db()
         self.assertEqual(sr.status, RequestStatus.UNFULFILLED.value)
+
+
+@override_settings(**TEST_OVERRIDES)
+class BookingQuoteFlowTests(APITestCase):
+    """Loop-distance quote, no-driver block, and >radius consent gate."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.region = Region.objects.create(name="Booking Region", code="BKG")
+        PricingConfig.objects.create(region=cls.region)  # defaults: radius 20km, base 879
+        # Disposal site (C) near the pickup so the loop is modest.
+        DisposalSite.objects.create(name="Test Plant", lat=Decimal("5.65"), lng=Decimal("-0.20"))
+
+    def _customer(self, suffix: str) -> User:
+        return _make_user(phone=f"+2332019{suffix}", role=Role.CUSTOMER)
+
+    def _create_payload(self, **overrides):
+        payload = {
+            "region_id": self.region.id,
+            "waste_type": "septic",
+            "volume_tier": "full",
+            "num_trips": 1,
+            "pickup_lat": "5.6037",
+            "pickup_lng": "-0.1870",
+        }
+        payload.update(overrides)
+        return payload
+
+    def test_quote_no_drivers_online(self):
+        cust = self._customer("00001")
+        self.client.force_authenticate(user=cust)
+        resp = self.client.post(
+            reverse("requests_app:quote"),
+            {"region_id": self.region.id, "pickup_lat": "5.6037", "pickup_lng": "-0.1870",
+             "volume_tier": "full", "num_trips": 1},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertTrue(resp.data["no_drivers"])
+
+    def test_quote_with_nearby_driver_uses_loop(self):
+        _make_driver(phone="+233242000001", lat=5.6040, lng=-0.1875)
+        cust = self._customer("00002")
+        self.client.force_authenticate(user=cust)
+        resp = self.client.post(
+            reverse("requests_app:quote"),
+            {"region_id": self.region.id, "pickup_lat": "5.6037", "pickup_lng": "-0.1870",
+             "volume_tier": "full", "num_trips": 1},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertFalse(resp.data["no_drivers"])
+        self.assertFalse(resp.data["requires_confirmation"])
+        self.assertGreater(Decimal(resp.data["total"]), Decimal("879"))  # base + loop distance
+
+    def test_create_blocked_when_no_drivers(self):
+        cust = self._customer("00003")
+        self.client.force_authenticate(user=cust)
+        resp = self.client.post(reverse("requests_app:create"), self._create_payload(), format="json")
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.data.get("code"), "no_drivers")
+        self.assertFalse(ServiceRequest.objects.filter(customer=cust).exists())
+
+    def test_create_requires_confirmation_when_driver_far(self):
+        # Only driver is ~30km north of pickup → beyond the 20km standard radius.
+        _make_driver(phone="+233242000004", lat=5.87, lng=-0.187)
+        cust = self._customer("00004")
+        self.client.force_authenticate(user=cust)
+        resp = self.client.post(reverse("requests_app:create"), self._create_payload(), format="json")
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.data.get("code"), "confirmation_required")
+        self.assertIn("nearest_driver_km", resp.data)
+        self.assertFalse(ServiceRequest.objects.filter(customer=cust).exists())
+
+    def test_create_far_driver_succeeds_with_accept_expanded(self):
+        _make_driver(phone="+233242000005", lat=5.87, lng=-0.187)
+        cust = self._customer("00005")
+        self.client.force_authenticate(user=cust)
+        resp = self.client.post(
+            reverse("requests_app:create"),
+            self._create_payload(accept_expanded=True),
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 201, resp.data)
+        sr = ServiceRequest.objects.get(customer=cust)
+        self.assertEqual(sr.volume_tier, "full")
+
+    def test_create_nearby_driver_stores_loop_quote(self):
+        _make_driver(phone="+233242000006", lat=5.6040, lng=-0.1875)
+        cust = self._customer("00006")
+        self.client.force_authenticate(user=cust)
+        resp = self.client.post(
+            reverse("requests_app:create"),
+            self._create_payload(num_trips=2),
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 201, resp.data)
+        sr = ServiceRequest.objects.get(customer=cust)
+        self.assertEqual(sr.num_trips, 2)
+        self.assertEqual(sr.quote_trips_multiplier, Decimal("2.80"))
+        self.assertGreater(sr.quote_billable_distance_km, Decimal("0"))

@@ -91,14 +91,19 @@ def render_receipt_pdf(sr: ServiceRequest) -> bytes:
     story.append(Spacer(1, 8 * mm))
 
     story.append(Paragraph("<b>Quote breakdown</b>", styles["Heading4"]))
-    distance_km = f"{float(sr.quote_distance_km):.1f} km"
+    billed_km = f"{float(sr.quote_billable_distance_km):.1f} km billed"
+    volume_label = (
+        sr.get_volume_tier_display() if hasattr(sr, "get_volume_tier_display") else sr.volume_tier
+    )
     quote_rows = [
         ["Description", "Amount (GHS)"],
         ["Base fee", f"{sr.quote_base_fee}"],
-        [f"Distance ({distance_km})", f"{sr.quote_distance_fee}"],
-        ["Tank size fee", f"{sr.quote_tier_fee}"],
-        ["Total", f"{sr.quote_total}"],
+        [f"Distance ({billed_km})", f"{sr.quote_distance_fee}"],
+        [f"Volume — {volume_label} (×{sr.quote_volume_multiplier})", "—"],
     ]
+    if sr.num_trips and sr.num_trips > 1:
+        quote_rows.append([f"Trips — {sr.num_trips} (×{sr.quote_trips_multiplier})", "—"])
+    quote_rows.append(["Total", f"{sr.quote_total}"])
     quote = Table(quote_rows, colWidths=[110 * mm, 55 * mm])
     quote.setStyle(
         TableStyle(

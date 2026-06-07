@@ -114,15 +114,18 @@ def candidate_drivers(request: ServiceRequest) -> list[tuple[Driver, float, floa
     pickup_lat = float(request.pickup_lat)
     pickup_lng = float(request.pickup_lng)
 
-    # Stage 1: haversine prefilter inside radius.
+    # Stage 1: haversine distance for every idle driver — NO radius cap.
+    # The nearest driver always wins, however far; `matching_radius_km` is used
+    # only for score normalization below and for the customer-facing consent
+    # threshold in the booking view. UNFULFILLED happens only when zero drivers
+    # are online (empty `near`).
     near: list[tuple[Driver, float]] = []
     for driver in qs:
         d_km = haversine_km(
             pickup_lat, pickup_lng,
             float(driver.last_lat), float(driver.last_lng),
         )
-        if d_km <= radius:
-            near.append((driver, d_km))
+        near.append((driver, d_km))
     if not near:
         return []
     near.sort(key=lambda t: t[1])

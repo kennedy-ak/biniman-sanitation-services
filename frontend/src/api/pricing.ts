@@ -3,12 +3,12 @@ import type { Region } from '@/types'
 
 export interface PricingConfig {
   region: Region
-  base_fee_min: string
-  base_fee_max: string
+  base_fee: string
   distance_rate_per_km: string
-  tier_small_fee: string
-  tier_medium_fee: string
-  tier_large_fee: string
+  min_billable_km: number
+  small_discount_pct: string
+  medium_discount_pct: string
+  extra_trip_surcharge_pct: string
   commission_pct: string
   matching_radius_km: number
   accept_window_seconds: number

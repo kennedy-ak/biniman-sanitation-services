@@ -26,10 +26,12 @@ const WASTE_TYPES: { value: WasteType; label: string; desc: string; icon: string
 ]
 
 const TIERS: { value: VolumeTier; label: string; range: string; fill: string }[] = [
-  { value: 'small', label: 'Small', range: '≤ 2,000 L', fill: '33%' },
-  { value: 'medium', label: 'Medium', range: '2,000–5,000 L', fill: '66%' },
-  { value: 'large', label: 'Large', range: '5,000+ L', fill: '100%' },
+  { value: 'small', label: 'Small load', range: 'Under 50% full', fill: '33%' },
+  { value: 'medium', label: 'Medium load', range: '50–75% full', fill: '66%' },
+  { value: 'full', label: 'Full load', range: '75–100% full', fill: '100%' },
 ]
+
+const TRIP_OPTS = [1, 2, 3]
 
 const GATE_FIT_OPTS: { value: GateFit; label: string }[] = [
   { value: 'yes', label: 'Yes, it fits' },
@@ -92,13 +94,15 @@ export function CustomerNewRequest() {
   const [step, setStep] = useState(1)
   const [regionId, setRegionId] = useState<number | undefined>(user?.region?.id)
   const [wasteType, setWasteType] = useState<WasteType>('septic')
-  const [tier, setTier] = useState<VolumeTier>('medium')
+  const [tier, setTier] = useState<VolumeTier>('full')
+  const [numTrips, setNumTrips] = useState(1)
   const [lat, setLat] = useState('5.6037')
   const [lng, setLng] = useState('-0.1870')
   const [address, setAddress] = useState('')
   const [notes, setNotes] = useState('')
   const [quote, setQuote] = useState<QuotePreview | null>(null)
   const [quoting, setQuoting] = useState(false)
+  const [showConsent, setShowConsent] = useState(false)
   const [locating, setLocating] = useState(false)
   const [locateError, setLocateError] = useState<string | null>(null)
   const [showCoords, setShowCoords] = useState(false)
@@ -123,7 +127,7 @@ export function CustomerNewRequest() {
     const t = setTimeout(() => { void refreshQuote() }, 400)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [regionId, tier, lat, lng])
+  }, [regionId, tier, numTrips, lat, lng])
 
   function locate() {
     if (!navigator.geolocation) {
@@ -150,7 +154,9 @@ export function CustomerNewRequest() {
     if (!regionId) return
     setQuoting(true)
     try {
-      const q = await previewQuote({ region_id: regionId, pickup_lat: lat, pickup_lng: lng, volume_tier: tier })
+      const q = await previewQuote({
+        region_id: regionId, pickup_lat: lat, pickup_lng: lng, volume_tier: tier, num_trips: numTrips,
+      })
       setQuote(q)
     } catch {
       setQuote(null)
@@ -160,11 +166,13 @@ export function CustomerNewRequest() {
   }
 
   const submit = useMutation({
-    mutationFn: () =>
+    mutationFn: (acceptExpanded: boolean) =>
       createRequest({
         region_id: regionId!,
         waste_type: wasteType,
         volume_tier: tier,
+        num_trips: numTrips,
+        accept_expanded: acceptExpanded,
         pickup_lat: lat,
         pickup_lng: lng,
         pickup_address: address,
@@ -181,9 +189,24 @@ export function CustomerNewRequest() {
         someone_on_site: someoneOnSite,
       }),
     onSuccess: (sr) => navigate(`/customer/requests/${sr.id}/pay`),
+    onError: (err) => {
+      const code = (err as { response?: { data?: { code?: string } } })?.response?.data?.code
+      if (code === 'confirmation_required') setShowConsent(true)
+    },
   })
 
-  const canSubmit = !!regionId && !!lat && !!lng && !!gatePhoto
+  const noDrivers = quote?.no_drivers === true
+  const requiresConfirmation = quote?.requires_confirmation === true
+  const canSubmit = !!regionId && !!lat && !!lng && !noDrivers
+
+  function handleSubmit() {
+    if (!canSubmit) return
+    if (requiresConfirmation) {
+      setShowConsent(true)
+      return
+    }
+    submit.mutate(false)
+  }
 
   function goStep(n: number) {
     setStep(n)
@@ -279,6 +302,32 @@ export function CustomerNewRequest() {
                   </button>
                 ))}
               </div>
+
+              <SectionDivider>Number of trips</SectionDivider>
+
+              <div className="grid grid-cols-3 gap-3">
+                {TRIP_OPTS.map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => setNumTrips(n)}
+                    className={`text-center p-4 rounded-xl border-2 transition ${
+                      numTrips === n
+                        ? 'border-primary bg-primary/5 shadow-sm'
+                        : 'border-charcoal/10 hover:border-charcoal/25 bg-white'
+                    }`}
+                  >
+                    <div className="font-bold text-charcoal text-lg">{n}</div>
+                    <div className="text-xs text-charcoal/55 mt-0.5">
+                      {n === 1 ? 'Single trip' : `${n} truck loads`}
+                    </div>
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-charcoal/45 mt-2">
+                Extra trips are needed when the waste is more than one truck can carry. Each additional
+                trip adds a surcharge.
+              </p>
             </StepCard>
           )}
 
@@ -381,7 +430,6 @@ export function CustomerNewRequest() {
               sub="Helps us send the right truck and avoid surprises"
               onBack={() => goStep(2)}
               onNext={() => goStep(4)}
-              canNext={!!gatePhoto}
             >
               <div className="space-y-6">
                 <div className="space-y-2">
@@ -395,7 +443,7 @@ export function CustomerNewRequest() {
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-semibold text-charcoal">Photo of your gate</span>
-                    <span className="text-[10px] uppercase font-bold tracking-wide text-red-500">Required</span>
+                    <span className="text-[10px] text-charcoal/40 uppercase font-bold tracking-wide">Optional</span>
                   </div>
                   <PhotoField file={gatePhoto} onFile={setGatePhoto} />
                 </div>
@@ -423,7 +471,7 @@ export function CustomerNewRequest() {
               isLast
               canSubmit={canSubmit}
               submitting={submit.isPending}
-              onSubmit={() => submit.mutate()}
+              onSubmit={handleSubmit}
               submitError={submit.isError}
             >
               <div className="space-y-6">
@@ -484,15 +532,33 @@ export function CustomerNewRequest() {
                 )}
               </div>
 
-              {quote ? (
+              {noDrivers ? (
+                <div className="mt-3 text-sm text-white/75 leading-relaxed">
+                  No drivers are available right now — please try again shortly.
+                </div>
+              ) : quote ? (
                 <>
                   <div className="font-heading text-4xl font-extrabold mt-1">GHS {quote.total}</div>
                   <div className="text-[11px] text-white/60 mt-0.5 mb-4">Estimate · confirmed at booking</div>
                   <div className="space-y-2 text-sm border-t border-white/10 pt-4">
                     <PriceRow label="Base fee" value={`GHS ${quote.base_fee}`} />
-                    <PriceRow label={`Distance (${Number(quote.distance_km).toFixed(1)} km)`} value={`GHS ${quote.distance_fee}`} />
-                    <PriceRow label="Tank size fee" value={`GHS ${quote.tier_fee}`} />
+                    <PriceRow
+                      label={`Distance (${Number(quote.billable_distance_km).toFixed(1)} km)`}
+                      value={`GHS ${quote.distance_fee}`}
+                    />
+                    {Number(quote.volume_multiplier) !== 1 && (
+                      <PriceRow label="Volume discount" value={`×${quote.volume_multiplier}`} />
+                    )}
+                    {quote.num_trips > 1 && (
+                      <PriceRow label={`${quote.num_trips} trips`} value={`×${quote.trips_multiplier}`} />
+                    )}
                   </div>
+                  {requiresConfirmation && (
+                    <div className="mt-4 text-[11px] leading-snug bg-accent/20 text-accent rounded-lg px-3 py-2">
+                      Nearest driver is ~{quote.nearest_driver_km} km away — the price reflects the extra
+                      distance. You'll confirm before paying.
+                    </div>
+                  )}
                 </>
               ) : (
                 <div className="mt-3 text-sm text-white/60 leading-relaxed">
@@ -505,17 +571,23 @@ export function CustomerNewRequest() {
               <button
                 type="button"
                 disabled={submit.isPending || !canSubmit}
-                onClick={() => submit.mutate()}
+                onClick={handleSubmit}
                 className="w-full bg-accent text-charcoal font-bold py-3.5 rounded-xl hover:brightness-110 disabled:opacity-50 transition shadow-sm text-base"
               >
-                {submit.isPending ? 'Submitting…' : 'Confirm & find a driver →'}
+                {submit.isPending
+                  ? 'Submitting…'
+                  : requiresConfirmation
+                    ? 'Review price & continue →'
+                    : 'Confirm & find a driver →'}
               </button>
               {!canSubmit && !submit.isPending && (
                 <p className="mt-2 text-center text-[11px] text-white/50">
-                  {!gatePhoto ? 'Gate photo required to continue' : 'Fill in your location to continue'}
+                  {noDrivers
+                    ? 'No drivers available right now'
+                    : 'Fill in your location to continue'}
                 </p>
               )}
-              {submit.isError && (
+              {submit.isError && !showConsent && (
                 <p className="mt-2 text-center text-xs text-red-300">Could not create request. Please try again.</p>
               )}
             </div>
@@ -537,6 +609,44 @@ export function CustomerNewRequest() {
           </div>
         </div>
       </div>
+
+      {/* ── Expanded-price consent modal ── */}
+      {showConsent && quote && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6">
+            <div className="text-3xl">🚚</div>
+            <h3 className="font-heading text-xl font-bold text-charcoal mt-2">
+              Driver is farther than usual
+            </h3>
+            <p className="text-sm text-charcoal/65 mt-2 leading-relaxed">
+              The nearest available driver is about{' '}
+              <span className="font-bold text-charcoal">{quote.nearest_driver_km} km</span> away. Because
+              of the extra distance, the price for this job is{' '}
+              <span className="font-bold text-charcoal">GHS {quote.total}</span>.
+            </p>
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setShowConsent(false)}
+                className="flex-1 border-2 border-charcoal/15 rounded-xl py-3 text-sm font-semibold text-charcoal/60 hover:border-charcoal/30 transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={submit.isPending}
+                onClick={() => {
+                  setShowConsent(false)
+                  submit.mutate(true)
+                }}
+                className="flex-1 bg-accent text-charcoal font-bold rounded-xl py-3 text-sm hover:brightness-110 disabled:opacity-50 transition"
+              >
+                {submit.isPending ? 'Submitting…' : `Proceed · GHS ${quote.total}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -610,7 +720,7 @@ function StepCard({
               <span className="text-xs text-red-600">Could not create request. Please try again.</span>
             )}
             {!canSubmit && !submitting && (
-              <span className="text-xs text-charcoal/40">Gate photo required to submit</span>
+              <span className="text-xs text-charcoal/40">Fill in your location to submit</span>
             )}
           </div>
         ) : (
@@ -624,7 +734,7 @@ function StepCard({
               Continue →
             </button>
             {canNext === false && (
-              <span className="text-xs text-charcoal/40">Gate photo required to continue</span>
+              <span className="text-xs text-charcoal/40">Complete this step to continue</span>
             )}
           </div>
         )}

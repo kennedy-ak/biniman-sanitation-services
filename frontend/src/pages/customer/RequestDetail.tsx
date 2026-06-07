@@ -77,8 +77,8 @@ export function CustomerRequestDetail() {
       const data = query.state.data
       const status = data?.status
       const terminal = status === 'completed' || status === 'cancelled' || status === 'unfulfilled'
-      if (terminal && Date.now() < justPaidUntil) return 3000
-      return terminal ? false : 3000
+      if (terminal && Date.now() < justPaidUntil) return 5000
+      return terminal ? false : 10000
     },
   })
 
@@ -437,14 +437,24 @@ export function CustomerRequestDetail() {
               <div className="flex justify-between items-center py-3">
                 <div>
                   <span className="text-sm text-charcoal">Distance</span>
-                  <p className="text-xs text-charcoal/45">{Number(sr.quote_distance_km).toFixed(1)} km</p>
+                  <p className="text-xs text-charcoal/45">{Number(sr.quote_billable_distance_km).toFixed(1)} km billed</p>
                 </div>
                 <span className="text-sm font-medium text-charcoal">GHS {sr.quote_distance_fee}</span>
               </div>
-              <div className="flex justify-between items-center py-3">
-                <span className="text-sm text-charcoal">Tank size fee</span>
-                <span className="text-sm font-medium text-charcoal">GHS {sr.quote_tier_fee}</span>
-              </div>
+              {Number(sr.quote_volume_multiplier) !== 1 && (
+                <div className="flex justify-between items-center py-3">
+                  <span className="text-sm text-charcoal">
+                    Volume <span className="capitalize">({sr.volume_tier})</span>
+                  </span>
+                  <span className="text-sm font-medium text-charcoal">×{sr.quote_volume_multiplier}</span>
+                </div>
+              )}
+              {sr.num_trips > 1 && (
+                <div className="flex justify-between items-center py-3">
+                  <span className="text-sm text-charcoal">{sr.num_trips} trips</span>
+                  <span className="text-sm font-medium text-charcoal">×{sr.quote_trips_multiplier}</span>
+                </div>
+              )}
             </div>
             <div className="flex justify-between items-center px-6 py-4 bg-primary rounded-b-2xl">
               <span className="text-sm text-white/70 font-medium">Total</span>

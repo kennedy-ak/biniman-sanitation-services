@@ -1,11 +1,19 @@
 from django.contrib import admin
 
-from .models import PricingConfig
+from .models import DisposalSite, PricingConfig
 
 
 @admin.register(PricingConfig)
 class PricingConfigAdmin(admin.ModelAdmin):
     list_display = (
-        "region", "base_fee_min", "base_fee_max", "distance_rate_per_km",
+        "region", "base_fee", "distance_rate_per_km", "min_billable_km",
+        "small_discount_pct", "medium_discount_pct", "extra_trip_surcharge_pct",
         "commission_pct", "matching_radius_km",
     )
+
+
+@admin.register(DisposalSite)
+class DisposalSiteAdmin(admin.ModelAdmin):
+    list_display = ("name", "region", "lat", "lng", "is_active")
+    list_filter = ("is_active", "region")
+    search_fields = ("name",)

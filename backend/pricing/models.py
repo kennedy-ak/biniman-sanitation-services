@@ -4,28 +4,42 @@ from django.db import models
 
 
 class VolumeTier(models.TextChoices):
-    SMALL = "small", "Small (≤ 2,000L)"
-    MEDIUM = "medium", "Medium (2,000–5,000L)"
-    LARGE = "large", "Large (5,000L+)"
+    SMALL = "small", "Small load (under 50%)"
+    MEDIUM = "medium", "Medium load (50–75%)"
+    FULL = "full", "Full load (75–100%)"
 
 
 class PricingConfig(models.Model):
-    """Per-region pricing configuration. One active row per region."""
+    """Per-region pricing configuration. One active row per region.
+
+    Multiplicative model (snapshotted onto each request at booking):
+        subtotal = base_fee + distance_rate_per_km × max(loop_km, min_billable_km)
+        total    = ROUND(subtotal × volume_multiplier × trips_multiplier, 0)
+    where volume_multiplier discounts partial loads and trips_multiplier adds
+    a per-extra-trip surcharge.
+    """
 
     region = models.OneToOneField(
         "accounts.Region", on_delete=models.CASCADE, related_name="pricing"
     )
-    base_fee_min = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("30"))
-    base_fee_max = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("150"))
-    distance_rate_per_km = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("3"))
 
-    tier_small_fee = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("50"))
-    tier_medium_fee = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("100"))
-    tier_large_fee = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("200"))
+    # Base + distance
+    base_fee = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("879"))
+    distance_rate_per_km = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("20"))
+    min_billable_km = models.PositiveIntegerField(default=10)
+
+    # Volume tier discounts (full load is the baseline at 0%)
+    small_discount_pct = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("30"))
+    medium_discount_pct = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("15"))
+
+    # Multi-trip surcharge applied per extra trip beyond the first
+    extra_trip_surcharge_pct = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("80"))
 
     commission_pct = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("15"))
 
-    matching_radius_km = models.PositiveIntegerField(default=15)
+    # Standard radius: beyond this driver→pickup distance the rider must confirm
+    # the (higher) price before paying. Not a hard matching cap.
+    matching_radius_km = models.PositiveIntegerField(default=20)
     accept_window_seconds = models.PositiveIntegerField(default=60)
 
     # Dispatch tuning — see requests_app.services.matching
@@ -45,9 +59,31 @@ class PricingConfig(models.Model):
     def __str__(self) -> str:
         return f"Pricing for {self.region.name}"
 
-    def tier_fee(self, tier: str) -> Decimal:
-        return {
-            VolumeTier.SMALL: self.tier_small_fee,
-            VolumeTier.MEDIUM: self.tier_medium_fee,
-            VolumeTier.LARGE: self.tier_large_fee,
-        }[tier]
+
+class DisposalSite(models.Model):
+    """A composite / waste treatment plant (point C in the A→B→C→A loop).
+
+    Waste collected at the rider's pickup is hauled here for disposal. For now a
+    single active row is seeded (KCARP, Kumasi); the quote engine picks the active
+    site via `pricing.services.get_active_disposal_site`.
+    """
+
+    name = models.CharField(max_length=120)
+    region = models.ForeignKey(
+        "accounts.Region",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="disposal_sites",
+    )
+    lat = models.DecimalField(max_digits=10, decimal_places=7)
+    lng = models.DecimalField(max_digits=10, decimal_places=7)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Disposal site"
+        verbose_name_plural = "Disposal sites"
+
+    def __str__(self) -> str:
+        return self.name

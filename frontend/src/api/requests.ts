@@ -21,6 +21,7 @@ export interface QuotePayload {
   pickup_lat: string
   pickup_lng: string
   volume_tier: VolumeTier
+  num_trips?: number
 }
 
 export async function previewQuote(payload: QuotePayload) {
@@ -32,6 +33,8 @@ export interface CreateRequestPayload {
   region_id: number
   waste_type: WasteType
   volume_tier: VolumeTier
+  num_trips?: number
+  accept_expanded?: boolean
   pickup_lat: string
   pickup_lng: string
   pickup_address?: string
