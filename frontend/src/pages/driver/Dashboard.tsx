@@ -8,7 +8,6 @@ import {
   declineOffer,
   fetchActiveRequest,
   fetchCurrentOffer,
-  fetchDriverPendingRating,
   fetchDriverStats,
   pingDriverLocation,
   setDriverOnline,
@@ -17,7 +16,6 @@ import {
 import { useDriverSocket } from '@/hooks/useRequestSocket'
 import { useLocationBroadcaster } from '@/hooks/useLocationBroadcaster'
 import { useLivePosition } from '@/hooks/useLivePosition'
-import { RatingForm } from '@/components/RatingForm'
 import { DriverRouteMap } from '@/components/DriverRouteMap'
 import type { DriverOffer, RequestStatus, ServiceRequest } from '@/types'
 import type { LatLng } from '@/lib/mapboxDirections'
@@ -148,7 +146,6 @@ export function DriverDashboard() {
   const qc = useQueryClient()
   const now = useClock()
   const [toggleError, setToggleError] = useState<string | null>(null)
-  const [dismissedRatings, setDismissedRatings] = useState<number[]>([])
 
   const driver = useQuery({ queryKey: ['driver', 'me'], queryFn: fetchMyDriver, retry: false })
   const isApproved = driver.data?.status === 'approved'
@@ -170,12 +167,6 @@ export function DriverDashboard() {
     queryFn: fetchActiveRequest,
     enabled: isApproved,
     refetchInterval: 10000,
-  })
-  const pendingRatingQuery = useQuery({
-    queryKey: ['driver', 'pending-rating'],
-    queryFn: fetchDriverPendingRating,
-    enabled: isApproved && !activeQuery.data,
-    refetchInterval: 30000,
   })
 
   useLocationBroadcaster(isApproved && !!driver.data?.is_online)
@@ -265,8 +256,6 @@ export function DriverDashboard() {
   const active     = activeQuery.data ?? null
   const isOnline   = driver.data.is_online
   const hasLocation = driver.data.has_location
-  const pending    = pendingRatingQuery.data ?? null
-  const showPending = pending && !dismissedRatings.includes(pending.id)
   const idle       = !active && !offer
 
   const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
@@ -361,12 +350,6 @@ export function DriverDashboard() {
 
         {/* Left col */}
         <div className="space-y-4">
-          {showPending && (
-            <PendingRatingCard
-              pending={pending}
-              onDismiss={() => setDismissedRatings((ids) => [...ids, pending.id])}
-            />
-          )}
           <LiveFeedPanel
             offer={offer}
             active={active}
@@ -446,36 +429,6 @@ function LiveFeedPanel({
       ) : (
         <OfflineBody />
       )}
-    </div>
-  )
-}
-
-// ── Pending rating card ───────────────────────────────────────────────────────
-
-function PendingRatingCard({
-  pending, onDismiss,
-}: {
-  pending: { id: number }; onDismiss: () => void
-}) {
-  return (
-    <div className="bg-white border border-charcoal/8 rounded-2xl overflow-hidden shadow-sm">
-      <div className="px-5 py-4 border-b border-charcoal/6 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <span className="text-amber-500"><IC.Star c="#f59e0b" /></span>
-          <h2 className="text-sm font-semibold text-charcoal">Rate your last customer</h2>
-        </div>
-        <button
-          type="button"
-          onClick={onDismiss}
-          className="text-xs font-medium text-charcoal/45 hover:text-charcoal/70 transition"
-        >
-          Skip ✕
-        </button>
-      </div>
-      <div className="p-5">
-        <p className="text-sm text-charcoal/60 mb-2">Completed job #{pending.id}.</p>
-        <RatingForm requestId={pending.id} label="Rate the customer" />
-      </div>
     </div>
   )
 }
