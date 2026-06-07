@@ -3,6 +3,7 @@ import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-do
 import type { ReactNode } from 'react'
 import { useAuth } from '@/store/auth'
 import { BRAND } from '@/lib/brand'
+import { prefetchRoute } from '@/lib/routeLoaders'
 
 interface PortalLayoutProps {
   title: string
@@ -94,6 +95,9 @@ export function PortalLayout({ title, navItems }: PortalLayoutProps) {
             key={item.to}
             to={item.to}
             end
+            onMouseEnter={() => prefetchRoute(item.to)}
+            onFocus={() => prefetchRoute(item.to)}
+            onTouchStart={() => prefetchRoute(item.to)}
             className={({ isActive }) =>
               `flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-[13.5px] transition-all ${
                 isActive
