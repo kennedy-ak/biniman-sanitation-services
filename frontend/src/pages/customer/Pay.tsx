@@ -103,10 +103,15 @@ export function CustomerPay() {
         <div className="mt-4 space-y-2 text-sm text-charcoal/80">
           <Row label="Base fee" value={`GHS ${sr.quote_base_fee}`} />
           <Row
-            label={`Distance (${Number(sr.quote_distance_km).toFixed(1)} km)`}
+            label={`Distance (${Number(sr.quote_billable_distance_km).toFixed(1)} km)`}
             value={`GHS ${sr.quote_distance_fee}`}
           />
-          <Row label="Tank size fee" value={`GHS ${sr.quote_tier_fee}`} />
+          {Number(sr.quote_volume_multiplier) !== 1 && (
+            <Row label={`Volume (${sr.volume_tier})`} value={`×${sr.quote_volume_multiplier}`} />
+          )}
+          {sr.num_trips > 1 && (
+            <Row label={`${sr.num_trips} trips`} value={`×${sr.quote_trips_multiplier}`} />
+          )}
         </div>
         <div className="mt-3 pt-3 border-t border-charcoal/10 flex justify-between items-center">
           <span className="font-bold text-charcoal">Total due</span>

@@ -35,30 +35,22 @@ export function AdminPricing() {
 
 function PricingForm({ cfg }: { cfg: PricingConfig }) {
   const qc = useQueryClient()
-  const [form, setForm] = useState<PricingConfigUpdate>({
-    base_fee_min: cfg.base_fee_min,
-    base_fee_max: cfg.base_fee_max,
+  const initial = (): PricingConfigUpdate => ({
+    base_fee: cfg.base_fee,
     distance_rate_per_km: cfg.distance_rate_per_km,
-    tier_small_fee: cfg.tier_small_fee,
-    tier_medium_fee: cfg.tier_medium_fee,
-    tier_large_fee: cfg.tier_large_fee,
+    min_billable_km: cfg.min_billable_km,
+    small_discount_pct: cfg.small_discount_pct,
+    medium_discount_pct: cfg.medium_discount_pct,
+    extra_trip_surcharge_pct: cfg.extra_trip_surcharge_pct,
     commission_pct: cfg.commission_pct,
     matching_radius_km: cfg.matching_radius_km,
     accept_window_seconds: cfg.accept_window_seconds,
   })
+  const [form, setForm] = useState<PricingConfigUpdate>(initial)
 
   useEffect(() => {
-    setForm({
-      base_fee_min: cfg.base_fee_min,
-      base_fee_max: cfg.base_fee_max,
-      distance_rate_per_km: cfg.distance_rate_per_km,
-      tier_small_fee: cfg.tier_small_fee,
-      tier_medium_fee: cfg.tier_medium_fee,
-      tier_large_fee: cfg.tier_large_fee,
-      commission_pct: cfg.commission_pct,
-      matching_radius_km: cfg.matching_radius_km,
-      accept_window_seconds: cfg.accept_window_seconds,
-    })
+    setForm(initial())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cfg])
 
   const mut = useMutation({
@@ -90,25 +82,49 @@ function PricingForm({ cfg }: { cfg: PricingConfig }) {
       </div>
 
       <div className="p-6 space-y-6">
-        <Section title="Base fee" desc="Floor and cap on the request base fee.">
+        <Section
+          title="Base & distance"
+          desc="Flat base fee, per-km rate over the A→B→C→A loop, and the minimum billed distance."
+        >
           <NumField
-            label="Min (GHS)"
-            value={form.base_fee_min}
-            onChange={(v) => setForm({ ...form, base_fee_min: v })}
+            label="Base fee (GHS)"
+            value={form.base_fee}
+            onChange={(v) => setForm({ ...form, base_fee: v })}
           />
-          <NumField
-            label="Max (GHS)"
-            value={form.base_fee_max}
-            onChange={(v) => setForm({ ...form, base_fee_max: v })}
-          />
-        </Section>
-
-        <Section title="Distance & commission" desc="Rate per km plus the platform's cut.">
           <NumField
             label="Per-km rate (GHS)"
             value={form.distance_rate_per_km}
             onChange={(v) => setForm({ ...form, distance_rate_per_km: v })}
           />
+          <NumField
+            label="Min billable distance (km)"
+            value={String(form.min_billable_km ?? 0)}
+            onChange={(v) => setForm({ ...form, min_billable_km: Number(v) })}
+          />
+        </Section>
+
+        <Section
+          title="Volume discounts & trips"
+          desc="Discount off the full-load price for partial loads, plus the surcharge per extra trip."
+        >
+          <NumField
+            label="Small load discount (%)"
+            value={form.small_discount_pct}
+            onChange={(v) => setForm({ ...form, small_discount_pct: v })}
+          />
+          <NumField
+            label="Medium load discount (%)"
+            value={form.medium_discount_pct}
+            onChange={(v) => setForm({ ...form, medium_discount_pct: v })}
+          />
+          <NumField
+            label="Extra trip surcharge (%)"
+            value={form.extra_trip_surcharge_pct}
+            onChange={(v) => setForm({ ...form, extra_trip_surcharge_pct: v })}
+          />
+        </Section>
+
+        <Section title="Commission" desc="The platform's cut of each completed job.">
           <NumField
             label="Commission (%)"
             value={form.commission_pct}
@@ -116,30 +132,12 @@ function PricingForm({ cfg }: { cfg: PricingConfig }) {
           />
         </Section>
 
-        <Section title="Volume tier fees" desc="Added to base fee based on tank size.">
-          <NumField
-            label="Small (GHS)"
-            value={form.tier_small_fee}
-            onChange={(v) => setForm({ ...form, tier_small_fee: v })}
-          />
-          <NumField
-            label="Medium (GHS)"
-            value={form.tier_medium_fee}
-            onChange={(v) => setForm({ ...form, tier_medium_fee: v })}
-          />
-          <NumField
-            label="Large (GHS)"
-            value={form.tier_large_fee}
-            onChange={(v) => setForm({ ...form, tier_large_fee: v })}
-          />
-        </Section>
-
         <Section
           title="Matching"
-          desc="How far we search for a driver and how long offers stay open."
+          desc="Standard radius — beyond this driver→pickup distance, riders confirm a higher price before paying. No hard cap on matching."
         >
           <NumField
-            label="Radius (km)"
+            label="Standard radius (km)"
             value={String(form.matching_radius_km ?? 0)}
             onChange={(v) => setForm({ ...form, matching_radius_km: Number(v) })}
           />

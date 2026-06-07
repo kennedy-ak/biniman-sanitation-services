@@ -65,7 +65,7 @@ export interface Driver {
 }
 
 export type WasteType = 'septic' | 'soak_pit' | 'industrial'
-export type VolumeTier = 'small' | 'medium' | 'large'
+export type VolumeTier = 'small' | 'medium' | 'full'
 
 export type GateFit = 'yes' | 'no' | 'unsure'
 export type TankLocation =
@@ -120,11 +120,14 @@ export interface ServiceRequest {
   is_overflowing: boolean | null
   preferred_time: PreferredTime | ''
   someone_on_site: boolean | null
+  num_trips: number
   quote_total: string
   quote_base_fee: string
   quote_distance_km: string
+  quote_billable_distance_km: string
   quote_distance_fee: string
-  quote_tier_fee: string
+  quote_volume_multiplier: string
+  quote_trips_multiplier: string
   commission_amount: string
   status: RequestStatus
   cancel_reason: string
@@ -142,11 +145,21 @@ export interface ServiceRequest {
 export interface QuotePreview {
   base_fee: string
   distance_km: string
+  billable_distance_km: string
   distance_fee: string
-  tier_fee: string
+  subtotal: string
+  volume_tier: string
+  volume_multiplier: string
+  adjusted_subtotal: string
+  num_trips: number
+  trips_multiplier: string
   total: string
   commission: string
   driver_payout: string
+  // Booking context (present unless no drivers are online)
+  nearest_driver_km?: number
+  requires_confirmation?: boolean
+  no_drivers?: boolean
 }
 
 export interface DriverOffer {

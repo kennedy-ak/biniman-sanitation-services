@@ -22,7 +22,11 @@ from requests_app.models import (
 class CreateRequestSerializer(serializers.Serializer):
     region_id = serializers.IntegerField()
     waste_type = serializers.ChoiceField(choices=WasteType.choices)
-    volume_tier = serializers.ChoiceField(choices=["small", "medium", "large"])
+    volume_tier = serializers.ChoiceField(choices=["small", "medium", "full"])
+    num_trips = serializers.IntegerField(min_value=1, max_value=3, required=False, default=1)
+    # Rider's explicit consent to a higher price when the nearest driver is
+    # beyond the standard radius. Required by the server before such a booking.
+    accept_expanded = serializers.BooleanField(required=False, default=False)
     pickup_lat = serializers.DecimalField(max_digits=10, decimal_places=7)
     pickup_lng = serializers.DecimalField(max_digits=10, decimal_places=7)
     pickup_address = serializers.CharField(allow_blank=True, max_length=300, required=False, default="")
@@ -48,11 +52,19 @@ class CreateRequestSerializer(serializers.Serializer):
 class QuotePreviewSerializer(serializers.Serializer):
     base_fee = serializers.DecimalField(max_digits=10, decimal_places=2)
     distance_km = serializers.DecimalField(max_digits=8, decimal_places=2)
+    billable_distance_km = serializers.DecimalField(max_digits=8, decimal_places=2)
     distance_fee = serializers.DecimalField(max_digits=10, decimal_places=2)
-    tier_fee = serializers.DecimalField(max_digits=10, decimal_places=2)
+    subtotal = serializers.DecimalField(max_digits=10, decimal_places=2)
+    volume_tier = serializers.CharField()
+    volume_multiplier = serializers.DecimalField(max_digits=4, decimal_places=2)
+    adjusted_subtotal = serializers.DecimalField(max_digits=10, decimal_places=2)
+    num_trips = serializers.IntegerField()
+    trips_multiplier = serializers.DecimalField(max_digits=4, decimal_places=2)
     total = serializers.DecimalField(max_digits=10, decimal_places=2)
     commission = serializers.DecimalField(max_digits=10, decimal_places=2)
     driver_payout = serializers.DecimalField(max_digits=10, decimal_places=2)
+    # `nearest_driver_km`, `requires_confirmation` and `no_drivers` are attached
+    # to the response dict in the view — they are booking context, not Quote data.
 
 
 class ServiceRequestSerializer(serializers.ModelSerializer):
@@ -69,8 +81,10 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
             "gate_fits_truck", "gate_photo", "tank_location",
             "truck_parking_distance", "tank_cover_photo", "tank_cover_state",
             "last_emptied", "is_overflowing", "preferred_time", "someone_on_site",
+            "num_trips",
             "quote_total", "quote_base_fee", "quote_distance_km",
-            "quote_distance_fee", "quote_tier_fee", "commission_amount",
+            "quote_billable_distance_km", "quote_distance_fee",
+            "quote_volume_multiplier", "quote_trips_multiplier", "commission_amount",
             "status", "cancel_reason", "payment_status",
             "created_at", "accepted_at", "en_route_at",
             "arrived_at", "completed_at", "cancelled_at",
@@ -117,4 +131,5 @@ class QuoteRequestSerializer(serializers.Serializer):
     region_id = serializers.IntegerField()
     pickup_lat = serializers.DecimalField(max_digits=10, decimal_places=7)
     pickup_lng = serializers.DecimalField(max_digits=10, decimal_places=7)
-    volume_tier = serializers.ChoiceField(choices=["small", "medium", "large"])
+    volume_tier = serializers.ChoiceField(choices=["small", "medium", "full"])
+    num_trips = serializers.IntegerField(min_value=1, max_value=3, required=False, default=1)

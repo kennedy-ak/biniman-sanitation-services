@@ -75,6 +75,9 @@ class Driver(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["status", "is_online"], name="driver_status_online_idx"),
+        ]
 
     def __str__(self) -> str:
         return f"Driver {self.user.phone} ({self.vehicle_reg})"

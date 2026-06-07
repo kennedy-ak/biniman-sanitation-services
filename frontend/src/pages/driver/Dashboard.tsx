@@ -162,13 +162,13 @@ export function DriverDashboard() {
     queryKey: ['driver', 'offer'],
     queryFn: fetchCurrentOffer,
     enabled: isApproved && !!driver.data?.is_online,
-    refetchInterval: 3000,
+    refetchInterval: 8000,
   })
   const activeQuery = useQuery({
     queryKey: ['driver', 'active'],
     queryFn: fetchActiveRequest,
     enabled: isApproved,
-    refetchInterval: 3000,
+    refetchInterval: 10000,
   })
   const pendingRatingQuery = useQuery({
     queryKey: ['driver', 'pending-rating'],

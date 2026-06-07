@@ -13,8 +13,13 @@ from rest_framework.response import Response
 from accounts.models import Region, Role
 from drivers.models import Driver, DriverStatus
 from drivers.permissions import IsDriver
-from pricing.distance import road_distance_km
-from pricing.services import calculate_quote, haversine_km
+from pricing.distance import road_distance_km, road_distance_km_path
+from pricing.services import (
+    calculate_quote,
+    get_active_disposal_site,
+    get_or_default_config,
+    haversine_km,
+)
 from requests_app.models import (
     AssignmentOutcome,
     RequestAssignment,
@@ -34,36 +39,42 @@ from requests_app.serializers import (
 from requests_app.services.broadcast import push_offer_cancelled, push_request_status
 
 
-def _nearest_idle_driver_distance_km(region: Region, lat: float, lng: float) -> float:
-    """Used for *quote previews* before a request exists. Returns 0 if no drivers.
+def _nearest_idle_driver(lat: float, lng: float):
+    """Nearest online + approved + idle driver with a known location. No radius cap.
 
-    Picks the nearest driver by haversine, then refines via Mapbox road distance
-    (haversine fallback when Mapbox is not configured).
+    This is the presumptive point A for the A→B→C→A loop quote: the matching
+    cascade offers the request to the closest driver first, so the nearest idle
+    driver is the one most likely to win the job. Returns ``None`` when no driver
+    is online — booking is then blocked.
     """
+    from requests_app.services.matching import _busy_driver_ids
+
     drivers = list(
         Driver.objects.filter(status=DriverStatus.APPROVED, is_online=True)
         .exclude(last_lat__isnull=True)
         .exclude(last_lng__isnull=True)
+        .exclude(id__in=list(_busy_driver_ids()))
     )
     if not drivers:
-        return 0.0
-    nearest = min(
+        return None
+    return min(
         drivers,
         key=lambda d: haversine_km(lat, lng, float(d.last_lat), float(d.last_lng)),
     )
-    return road_distance_km(
-        from_lat=float(nearest.last_lat), from_lng=float(nearest.last_lng),
-        to_lat=lat, to_lng=lng,
-    )
 
 
-def _avg_base_fee_for_region(region: Region) -> Decimal:
-    qs = Driver.objects.filter(status=DriverStatus.APPROVED, base_fee__gt=0)
-    fees = list(qs.values_list("base_fee", flat=True))
-    if not fees:
-        return Decimal("50")
-    avg = sum(fees) / len(fees)
-    return Decimal(avg).quantize(Decimal("0.01"))
+def _loop_and_leg_km(driver, lat: float, lng: float, site) -> tuple[float, float]:
+    """Return ``(A→B→C→A loop km, A→B leg km)`` by road distance.
+
+    A = driver, B = pickup, C = disposal site. The loop is what the customer is
+    billed for; the A→B leg drives the >standard-radius consent check.
+    """
+    a = (float(driver.last_lat), float(driver.last_lng))
+    b = (lat, lng)
+    c = (float(site.lat), float(site.lng))
+    loop = road_distance_km_path([a, b, c, a])
+    leg_ab = road_distance_km(from_lat=a[0], from_lng=a[1], to_lat=b[0], to_lng=b[1])
+    return loop, leg_ab
 
 
 # ---------- Customer endpoints ----------
@@ -76,16 +87,29 @@ def quote_preview(request):
     serializer.is_valid(raise_exception=True)
     data = serializer.validated_data
     region = get_object_or_404(Region, pk=data["region_id"])
-    distance_km = _nearest_idle_driver_distance_km(
-        region, float(data["pickup_lat"]), float(data["pickup_lng"])
-    )
+
+    site = get_active_disposal_site()
+    if site is None:
+        raise ValidationError({"detail": "No disposal site is configured.", "code": "no_disposal_site"})
+
+    pickup_lat, pickup_lng = float(data["pickup_lat"]), float(data["pickup_lng"])
+    driver = _nearest_idle_driver(pickup_lat, pickup_lng)
+    if driver is None:
+        return Response({"no_drivers": True})
+
+    loop_km, leg_ab_km = _loop_and_leg_km(driver, pickup_lat, pickup_lng, site)
     quote = calculate_quote(
         region=region,
-        distance_km=distance_km,
+        distance_km=loop_km,
         volume_tier=data["volume_tier"],
-        driver_base_fee=_avg_base_fee_for_region(region),
+        num_trips=data["num_trips"],
     )
-    return Response(QuotePreviewSerializer(quote.__dict__).data)
+    config = get_or_default_config(region)
+    payload = QuotePreviewSerializer(quote.__dict__).data
+    payload["nearest_driver_km"] = round(leg_ab_km, 2)
+    payload["requires_confirmation"] = leg_ab_km > float(config.matching_radius_km)
+    payload["no_drivers"] = False
+    return Response(payload)
 
 
 @api_view(["POST"])
@@ -110,15 +134,36 @@ def create_request(request):
     data = serializer.validated_data
     region = get_object_or_404(Region, pk=data["region_id"])
 
-    distance_km = _nearest_idle_driver_distance_km(
-        region, float(data["pickup_lat"]), float(data["pickup_lng"])
-    )
+    site = get_active_disposal_site()
+    if site is None:
+        raise ValidationError({"detail": "No disposal site is configured.", "code": "no_disposal_site"})
+
+    pickup_lat, pickup_lng = float(data["pickup_lat"]), float(data["pickup_lng"])
+    driver = _nearest_idle_driver(pickup_lat, pickup_lng)
+    if driver is None:
+        raise ValidationError({
+            "detail": "No drivers are available right now — please try again shortly.",
+            "code": "no_drivers",
+        })
+
+    loop_km, leg_ab_km = _loop_and_leg_km(driver, pickup_lat, pickup_lng, site)
     quote = calculate_quote(
         region=region,
-        distance_km=distance_km,
+        distance_km=loop_km,
         volume_tier=data["volume_tier"],
-        driver_base_fee=_avg_base_fee_for_region(region),
+        num_trips=data["num_trips"],
     )
+
+    # Beyond the standard radius the loop is longer and the price higher — the
+    # rider must have explicitly confirmed it (accept_expanded) before we book.
+    config = get_or_default_config(region)
+    if leg_ab_km > float(config.matching_radius_km) and not data["accept_expanded"]:
+        raise ValidationError({
+            "code": "confirmation_required",
+            "detail": "The nearest driver is beyond the standard range; the price reflects the extra distance.",
+            "nearest_driver_km": round(leg_ab_km, 2),
+            "total": str(quote.total),
+        })
 
     survey_fields = {
         k: data[k]
@@ -141,6 +186,7 @@ def create_request(request):
             region=region,
             waste_type=data["waste_type"],
             volume_tier=data["volume_tier"],
+            num_trips=data["num_trips"],
             pickup_lat=data["pickup_lat"],
             pickup_lng=data["pickup_lng"],
             pickup_address=data.get("pickup_address", ""),
@@ -148,8 +194,10 @@ def create_request(request):
             quote_total=quote.total,
             quote_base_fee=quote.base_fee,
             quote_distance_km=quote.distance_km,
+            quote_billable_distance_km=quote.billable_distance_km,
             quote_distance_fee=quote.distance_fee,
-            quote_tier_fee=quote.tier_fee,
+            quote_volume_multiplier=quote.volume_multiplier,
+            quote_trips_multiplier=quote.trips_multiplier,
             commission_amount=quote.commission,
             **survey_fields,
         )

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-LiquidGo — liquid waste removal marketplace for Ghana. Customers request a service, the backend matches the nearest verified driver via a timed offer cascade, Paystack handles payment, the platform takes commission, and the driver gets a payout to MoMo.
+Biniman (Django project package is still named `liquidgo`) — liquid waste removal marketplace for Ghana. Customers request a service, the backend matches the nearest verified driver via a timed offer cascade, Paystack handles payment, the platform takes commission, and the driver gets a payout to MoMo.
 
 ## Stack at a glance
 
@@ -63,7 +63,7 @@ DRF throttling is **scoped** for sensitive endpoints (`otp_request`, `otp_verify
 
 ### The core flow (where most logic lives)
 
-1. **Auth**: phone → OTP via `accounts.services.otp` (mNotify; logs the code in dev when no API key) → JWT pair from `rest_framework_simplejwt`. Frontend stores tokens under `liquidgo.access_token` / `liquidgo.refresh_token`; `frontend/src/api/client.ts` runs a single-flight refresh on 401.
+1. **Auth**: phone → OTP via `accounts.services.otp` (mNotify; logs the code in dev when no API key) → JWT pair from `rest_framework_simplejwt`. Frontend stores tokens under `biniman.access_token` / `biniman.refresh_token`; `frontend/src/api/client.ts` runs a single-flight refresh on 401.
 
 2. **Request lifecycle** — `ServiceRequest` FSM (illegal transitions blocked at the model layer): `PENDING → ASSIGNED → ACCEPTED → EN_ROUTE → ARRIVED → COMPLETED | CANCELLED | UNFULFILLED`. Each transition stamps its timestamp automatically.
 
