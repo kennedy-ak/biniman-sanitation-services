@@ -234,8 +234,9 @@ function EmailVerificationCard() {
       setError(null)
       setInfo(`Code sent to ${email.trim().toLowerCase()}. Expires in 10 minutes.`)
     },
-    onError: (e: any) => {
-      setError(e?.response?.data?.email?.[0] || e?.response?.data?.detail || 'Failed to send code.')
+    onError: (e: unknown) => {
+      const data = (e as { response?: { data?: { email?: string[]; detail?: string } } })?.response?.data
+      setError(data?.email?.[0] || data?.detail || 'Failed to send code.')
     },
   })
 
@@ -250,11 +251,12 @@ function EmailVerificationCard() {
       setError(null)
       setInfo('Email verified.')
     },
-    onError: (e: any) => {
+    onError: (e: unknown) => {
+      const data = (e as { response?: { data?: { code?: string[]; email?: string[]; detail?: string } } })?.response?.data
       setError(
-        e?.response?.data?.code?.[0] ||
-          e?.response?.data?.email?.[0] ||
-          e?.response?.data?.detail ||
+        data?.code?.[0] ||
+          data?.email?.[0] ||
+          data?.detail ||
           'Verification failed.',
       )
     },

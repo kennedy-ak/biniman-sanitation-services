@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import type { ReactNode } from 'react'
 import { useAuth } from '@/store/auth'
@@ -59,7 +59,12 @@ export function PortalLayout({ title, navItems }: PortalLayoutProps) {
   const logout = useAuth((s) => s.logout)
   const [open, setOpen] = useState(false)
 
-  useEffect(() => { setOpen(false) }, [location.pathname])
+  // Close the mobile sidebar on navigation (reset state during render — no effect needed)
+  const [prevPath, setPrevPath] = useState(location.pathname)
+  if (location.pathname !== prevPath) {
+    setPrevPath(location.pathname)
+    setOpen(false)
+  }
 
   const userInit = initials(user?.full_name ?? '', user?.phone ?? 'U')
 

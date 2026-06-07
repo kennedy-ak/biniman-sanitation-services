@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   adminListPricing,
@@ -48,10 +48,12 @@ function PricingForm({ cfg }: { cfg: PricingConfig }) {
   })
   const [form, setForm] = useState<PricingConfigUpdate>(initial)
 
-  useEffect(() => {
+  // Re-seed the form when the selected config changes (reset state during render)
+  const [prevCfg, setPrevCfg] = useState(cfg)
+  if (cfg !== prevCfg) {
+    setPrevCfg(cfg)
     setForm(initial())
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cfg])
+  }
 
   const mut = useMutation({
     mutationFn: () => adminUpdatePricing(cfg.region.id, form),

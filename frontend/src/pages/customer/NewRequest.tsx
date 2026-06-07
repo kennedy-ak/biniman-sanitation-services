@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { fetchRegions } from '@/api/auth'
@@ -118,16 +118,29 @@ export function CustomerNewRequest() {
   const [preferredTime, setPreferredTime] = useState<PreferredTime | ''>('')
   const [someoneOnSite, setSomeoneOnSite] = useState<boolean | null>(null)
 
-  useEffect(() => {
-    if (regions.data && !regionId) setRegionId(regions.data[0]?.id)
-  }, [regions.data, regionId])
+  // Default to the first region once they load (set state during render)
+  if (regions.data && regions.data.length > 0 && !regionId) setRegionId(regions.data[0].id)
+
+  const refreshQuote = useCallback(async () => {
+    if (!regionId) return
+    setQuoting(true)
+    try {
+      const q = await previewQuote({
+        region_id: regionId, pickup_lat: lat, pickup_lng: lng, volume_tier: tier, num_trips: numTrips,
+      })
+      setQuote(q)
+    } catch {
+      setQuote(null)
+    } finally {
+      setQuoting(false)
+    }
+  }, [regionId, lat, lng, tier, numTrips])
 
   useEffect(() => {
     if (!regionId) return
     const t = setTimeout(() => { void refreshQuote() }, 400)
     return () => clearTimeout(t)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [regionId, tier, numTrips, lat, lng])
+  }, [regionId, refreshQuote])
 
   function locate() {
     if (!navigator.geolocation) {
@@ -148,21 +161,6 @@ export function CustomerNewRequest() {
       },
       { timeout: 10000 },
     )
-  }
-
-  async function refreshQuote() {
-    if (!regionId) return
-    setQuoting(true)
-    try {
-      const q = await previewQuote({
-        region_id: regionId, pickup_lat: lat, pickup_lng: lng, volume_tier: tier, num_trips: numTrips,
-      })
-      setQuote(q)
-    } catch {
-      setQuote(null)
-    } finally {
-      setQuoting(false)
-    }
   }
 
   const submit = useMutation({

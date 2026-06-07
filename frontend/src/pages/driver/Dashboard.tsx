@@ -148,6 +148,7 @@ export function DriverDashboard() {
   const qc = useQueryClient()
   const now = useClock()
   const [toggleError, setToggleError] = useState<string | null>(null)
+  const [dismissedRatings, setDismissedRatings] = useState<number[]>([])
 
   const driver = useQuery({ queryKey: ['driver', 'me'], queryFn: fetchMyDriver, retry: false })
   const isApproved = driver.data?.status === 'approved'
@@ -265,6 +266,7 @@ export function DriverDashboard() {
   const isOnline   = driver.data.is_online
   const hasLocation = driver.data.has_location
   const pending    = pendingRatingQuery.data ?? null
+  const showPending = pending && !dismissedRatings.includes(pending.id)
   const idle       = !active && !offer
 
   const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
@@ -359,10 +361,15 @@ export function DriverDashboard() {
 
         {/* Left col */}
         <div className="space-y-4">
+          {showPending && (
+            <PendingRatingCard
+              pending={pending}
+              onDismiss={() => setDismissedRatings((ids) => [...ids, pending.id])}
+            />
+          )}
           <LiveFeedPanel
             offer={offer}
             active={active}
-            pending={pending}
             isOnline={isOnline}
             livePos={livePos}
             onAccept={() => offer && acceptMut.mutate(offer.assignment_id)}
@@ -412,13 +419,12 @@ function StatCard({
 // ── Live feed panel ───────────────────────────────────────────────────────────
 
 function LiveFeedPanel({
-  offer, active, pending, isOnline, livePos,
+  offer, active, isOnline, livePos,
   onAccept, onDecline, onAction,
   acceptPending, declinePending, statusPending,
 }: {
   offer: DriverOffer | null
   active: ServiceRequest | null
-  pending: { id: number } | null
   isOnline: boolean
   livePos: LatLng | null
   onAccept: () => void; onDecline: () => void; onAction: (next: RequestStatus) => void
@@ -435,16 +441,41 @@ function LiveFeedPanel({
         <ActiveBody req={active} livePos={livePos} onAction={onAction} isPending={statusPending} />
       ) : offer ? (
         <OfferBody offer={offer} livePos={livePos} onAccept={onAccept} onDecline={onDecline} acceptPending={acceptPending} declinePending={declinePending} />
-      ) : pending ? (
-        <div className="p-5">
-          <p className="text-sm text-charcoal/60 mb-4">Rate the customer for completed job #{pending.id}.</p>
-          <RatingForm requestId={pending.id} label="Rate the customer" />
-        </div>
       ) : isOnline ? (
         <WaitingBody />
       ) : (
         <OfflineBody />
       )}
+    </div>
+  )
+}
+
+// ── Pending rating card ───────────────────────────────────────────────────────
+
+function PendingRatingCard({
+  pending, onDismiss,
+}: {
+  pending: { id: number }; onDismiss: () => void
+}) {
+  return (
+    <div className="bg-white border border-charcoal/8 rounded-2xl overflow-hidden shadow-sm">
+      <div className="px-5 py-4 border-b border-charcoal/6 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <span className="text-amber-500"><IC.Star c="#f59e0b" /></span>
+          <h2 className="text-sm font-semibold text-charcoal">Rate your last customer</h2>
+        </div>
+        <button
+          type="button"
+          onClick={onDismiss}
+          className="text-xs font-medium text-charcoal/45 hover:text-charcoal/70 transition"
+        >
+          Skip ✕
+        </button>
+      </div>
+      <div className="p-5">
+        <p className="text-sm text-charcoal/60 mb-2">Completed job #{pending.id}.</p>
+        <RatingForm requestId={pending.id} label="Rate the customer" />
+      </div>
     </div>
   )
 }

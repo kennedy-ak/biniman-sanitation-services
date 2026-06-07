@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -95,7 +95,7 @@ export function AdminUsers({ initialRole = 'all' }: { initialRole?: RoleFilter }
     queryFn: () => fetchAdminUsers({ q: q || undefined }),
   })
 
-  const allUsers = list.data ?? []
+  const allUsers = useMemo(() => list.data ?? [], [list.data])
   const users = role === 'all' ? allUsers : allUsers.filter((u) => u.role === role)
 
   const roleCounts = useMemo(() => ({
@@ -111,14 +111,19 @@ export function AdminUsers({ initialRole = 'all' }: { initialRole?: RoleFilter }
     [users, me?.id],
   )
 
-  useEffect(() => {
+  // Prune selected ids that are no longer visible when the list changes
+  // (reset state during render instead of in an effect)
+  const visibleIdsKey = users.map((u) => u.id).join(',')
+  const [prevVisibleKey, setPrevVisibleKey] = useState(visibleIdsKey)
+  if (visibleIdsKey !== prevVisibleKey) {
+    setPrevVisibleKey(visibleIdsKey)
     const visible = new Set(users.map((u) => u.id))
     setSelected((prev) => {
       const next = new Set<number>()
       prev.forEach((id) => { if (visible.has(id)) next.add(id) })
       return next.size === prev.size ? prev : next
     })
-  }, [users])
+  }
 
   const allSelected  = selectableIds.length > 0 && selectableIds.every((id) => selected.has(id))
   const someSelected = selected.size > 0 && !allSelected

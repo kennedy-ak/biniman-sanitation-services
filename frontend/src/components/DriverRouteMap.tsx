@@ -127,7 +127,7 @@ export function DriverRouteMap({
 
     const run = async () => {
       try {
-        const r = await fetchRoute(driver, pickup, controller.signal)
+        const r = await fetchRoute(driver, { lat: pickup.lat, lng: pickup.lng }, controller.signal)
         if (cancelled) return
         setRoute(r)
         onRoute?.(r)
