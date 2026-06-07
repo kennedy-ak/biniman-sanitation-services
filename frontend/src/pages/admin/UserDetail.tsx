@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -389,14 +389,15 @@ function EditPanel({
   })
   const [err, setErr] = useState<string | null>(null)
 
-  // Hydrate region_id once regions load
-  useEffect(() => {
+  // Hydrate region_id once regions load (reset state during render, runs once)
+  const [regionsHydrated, setRegionsHydrated] = useState(false)
+  if (!regionsHydrated && regions.length > 0) {
+    setRegionsHydrated(true)
     if (form.region_id === undefined && initial.region) {
       const m = regions.find((r) => r.name === initial.region)
       if (m) setForm((f) => ({ ...f, region_id: m.id }))
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [regions])
+  }
 
   const mut = useMutation({
     mutationFn: () =>

@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { fetchMyRequests } from '@/api/requests'
@@ -31,9 +31,14 @@ export function CustomerRequestList() {
   const [filter, setFilter] = useState<Filter>('all')
   const [page, setPage] = useState(1)
   const list = useQuery({ queryKey: ['requests', 'mine'], queryFn: fetchMyRequests })
-  const data = list.data ?? []
+  const data = useMemo(() => list.data ?? [], [list.data])
 
-  useEffect(() => { setPage(1) }, [filter])
+  // Reset to page 1 whenever the filter changes (reset state during render)
+  const [prevFilter, setPrevFilter] = useState(filter)
+  if (filter !== prevFilter) {
+    setPrevFilter(filter)
+    setPage(1)
+  }
 
   const counts = useMemo(() => {
     return {

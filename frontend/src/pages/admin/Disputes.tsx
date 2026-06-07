@@ -114,7 +114,6 @@ export function AdminDisputes() {
 function DisputeCard({
   dispute,
   onPayout,
-  onComplete: _onComplete,
   onRefunded,
 }: {
   dispute: Dispute

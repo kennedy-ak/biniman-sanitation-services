@@ -8,7 +8,6 @@ import {
   declineOffer,
   fetchActiveRequest,
   fetchCurrentOffer,
-  fetchDriverPendingRating,
   fetchDriverStats,
   pingDriverLocation,
   setDriverOnline,
@@ -17,7 +16,6 @@ import {
 import { useDriverSocket } from '@/hooks/useRequestSocket'
 import { useLocationBroadcaster } from '@/hooks/useLocationBroadcaster'
 import { useLivePosition } from '@/hooks/useLivePosition'
-import { RatingForm } from '@/components/RatingForm'
 import { DriverRouteMap } from '@/components/DriverRouteMap'
 import type { DriverOffer, RequestStatus, ServiceRequest } from '@/types'
 import type { LatLng } from '@/lib/mapboxDirections'
@@ -170,12 +168,6 @@ export function DriverDashboard() {
     enabled: isApproved,
     refetchInterval: 10000,
   })
-  const pendingRatingQuery = useQuery({
-    queryKey: ['driver', 'pending-rating'],
-    queryFn: fetchDriverPendingRating,
-    enabled: isApproved && !activeQuery.data,
-    refetchInterval: 30000,
-  })
 
   useLocationBroadcaster(isApproved && !!driver.data?.is_online)
   const livePos = useLivePosition(
@@ -264,7 +256,6 @@ export function DriverDashboard() {
   const active     = activeQuery.data ?? null
   const isOnline   = driver.data.is_online
   const hasLocation = driver.data.has_location
-  const pending    = pendingRatingQuery.data ?? null
   const idle       = !active && !offer
 
   const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
@@ -362,7 +353,6 @@ export function DriverDashboard() {
           <LiveFeedPanel
             offer={offer}
             active={active}
-            pending={pending}
             isOnline={isOnline}
             livePos={livePos}
             onAccept={() => offer && acceptMut.mutate(offer.assignment_id)}
@@ -412,13 +402,12 @@ function StatCard({
 // ── Live feed panel ───────────────────────────────────────────────────────────
 
 function LiveFeedPanel({
-  offer, active, pending, isOnline, livePos,
+  offer, active, isOnline, livePos,
   onAccept, onDecline, onAction,
   acceptPending, declinePending, statusPending,
 }: {
   offer: DriverOffer | null
   active: ServiceRequest | null
-  pending: { id: number } | null
   isOnline: boolean
   livePos: LatLng | null
   onAccept: () => void; onDecline: () => void; onAction: (next: RequestStatus) => void
@@ -435,11 +424,6 @@ function LiveFeedPanel({
         <ActiveBody req={active} livePos={livePos} onAction={onAction} isPending={statusPending} />
       ) : offer ? (
         <OfferBody offer={offer} livePos={livePos} onAccept={onAccept} onDecline={onDecline} acceptPending={acceptPending} declinePending={declinePending} />
-      ) : pending ? (
-        <div className="p-5">
-          <p className="text-sm text-charcoal/60 mb-4">Rate the customer for completed job #{pending.id}.</p>
-          <RatingForm requestId={pending.id} label="Rate the customer" />
-        </div>
       ) : isOnline ? (
         <WaitingBody />
       ) : (

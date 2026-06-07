@@ -25,7 +25,7 @@ export function DriverJobHistory() {
     queryFn: fetchDriverHistory,
   })
 
-  const jobs = historyQuery.data ?? []
+  const jobs = useMemo(() => historyQuery.data ?? [], [historyQuery.data])
 
   // Summary stats (over all jobs, not filtered)
   const completed  = jobs.filter((j) => j.status === 'completed')
