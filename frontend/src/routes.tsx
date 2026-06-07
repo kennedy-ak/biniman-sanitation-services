@@ -7,37 +7,38 @@ import { Landing } from '@/pages/Landing'
 import { Login } from '@/pages/auth/Login'
 import { Signup } from '@/pages/auth/Signup'
 import { NotFound } from '@/pages/NotFound'
+import { load } from '@/lib/routeLoaders'
 
-const CustomerDashboard = lazy(() => import('@/pages/customer/Dashboard').then(m => ({ default: m.CustomerDashboard })))
-const CustomerProfile = lazy(() => import('@/pages/customer/Profile').then(m => ({ default: m.CustomerProfile })))
-const CustomerNewRequest = lazy(() => import('@/pages/customer/NewRequest').then(m => ({ default: m.CustomerNewRequest })))
-const CustomerRequestList = lazy(() => import('@/pages/customer/RequestList').then(m => ({ default: m.CustomerRequestList })))
-const CustomerRequestDetail = lazy(() => import('@/pages/customer/RequestDetail').then(m => ({ default: m.CustomerRequestDetail })))
-const CustomerPay = lazy(() => import('@/pages/customer/Pay').then(m => ({ default: m.CustomerPay })))
-const CustomerPaymentReturn = lazy(() => import('@/pages/customer/PaymentReturn').then(m => ({ default: m.CustomerPaymentReturn })))
+const CustomerDashboard = lazy(() => load.CustomerDashboard().then(m => ({ default: m.CustomerDashboard })))
+const CustomerProfile = lazy(() => load.CustomerProfile().then(m => ({ default: m.CustomerProfile })))
+const CustomerNewRequest = lazy(() => load.CustomerNewRequest().then(m => ({ default: m.CustomerNewRequest })))
+const CustomerRequestList = lazy(() => load.CustomerRequestList().then(m => ({ default: m.CustomerRequestList })))
+const CustomerRequestDetail = lazy(() => load.CustomerRequestDetail().then(m => ({ default: m.CustomerRequestDetail })))
+const CustomerPay = lazy(() => load.CustomerPay().then(m => ({ default: m.CustomerPay })))
+const CustomerPaymentReturn = lazy(() => load.CustomerPaymentReturn().then(m => ({ default: m.CustomerPaymentReturn })))
 
-const DriverDashboard = lazy(() => import('@/pages/driver/Dashboard').then(m => ({ default: m.DriverDashboard })))
-const DriverOnboard = lazy(() => import('@/pages/driver/Onboard').then(m => ({ default: m.DriverOnboard })))
-const DriverJobHistory = lazy(() => import('@/pages/driver/JobHistory').then(m => ({ default: m.DriverJobHistory })))
-const DriverJobDetail = lazy(() => import('@/pages/driver/JobDetail').then(m => ({ default: m.DriverJobDetail })))
+const DriverDashboard = lazy(() => load.DriverDashboard().then(m => ({ default: m.DriverDashboard })))
+const DriverOnboard = lazy(() => load.DriverOnboard().then(m => ({ default: m.DriverOnboard })))
+const DriverJobHistory = lazy(() => load.DriverJobHistory().then(m => ({ default: m.DriverJobHistory })))
+const DriverJobDetail = lazy(() => load.DriverJobDetail().then(m => ({ default: m.DriverJobDetail })))
 
-const FleetDashboard = lazy(() => import('@/pages/fleet/Dashboard').then(m => ({ default: m.FleetDashboard })))
-const FleetSignup = lazy(() => import('@/pages/fleet/Signup').then(m => ({ default: m.FleetSignup })))
-const FleetDrivers = lazy(() => import('@/pages/fleet/Drivers').then(m => ({ default: m.FleetDrivers })))
-const FleetJobs = lazy(() => import('@/pages/fleet/Jobs').then(m => ({ default: m.FleetJobs })))
-const FleetEarnings = lazy(() => import('@/pages/fleet/Earnings').then(m => ({ default: m.FleetEarnings })))
+const FleetDashboard = lazy(() => load.FleetDashboard().then(m => ({ default: m.FleetDashboard })))
+const FleetSignup = lazy(() => load.FleetSignup().then(m => ({ default: m.FleetSignup })))
+const FleetDrivers = lazy(() => load.FleetDrivers().then(m => ({ default: m.FleetDrivers })))
+const FleetJobs = lazy(() => load.FleetJobs().then(m => ({ default: m.FleetJobs })))
+const FleetEarnings = lazy(() => load.FleetEarnings().then(m => ({ default: m.FleetEarnings })))
 
-const AdminDashboard = lazy(() => import('@/pages/admin/Dashboard').then(m => ({ default: m.AdminDashboard })))
-const AdminApprovals = lazy(() => import('@/pages/admin/Approvals').then(m => ({ default: m.AdminApprovals })))
-const AdminPricing = lazy(() => import('@/pages/admin/Pricing').then(m => ({ default: m.AdminPricing })))
-const AdminTransactions = lazy(() => import('@/pages/admin/Transactions').then(m => ({ default: m.AdminTransactions })))
-const AdminFlagged = lazy(() => import('@/pages/admin/Flagged').then(m => ({ default: m.AdminFlagged })))
-const AdminDisputes = lazy(() => import('@/pages/admin/Disputes').then(m => ({ default: m.AdminDisputes })))
-const AdminUsers = lazy(() => import('@/pages/admin/Users').then(m => ({ default: m.AdminUsers })))
-const AdminUserDetail = lazy(() => import('@/pages/admin/UserDetail').then(m => ({ default: m.AdminUserDetail })))
-const AdminRegions = lazy(() => import('@/pages/admin/Regions').then(m => ({ default: m.AdminRegions })))
+const AdminDashboard = lazy(() => load.AdminDashboard().then(m => ({ default: m.AdminDashboard })))
+const AdminApprovals = lazy(() => load.AdminApprovals().then(m => ({ default: m.AdminApprovals })))
+const AdminPricing = lazy(() => load.AdminPricing().then(m => ({ default: m.AdminPricing })))
+const AdminTransactions = lazy(() => load.AdminTransactions().then(m => ({ default: m.AdminTransactions })))
+const AdminFlagged = lazy(() => load.AdminFlagged().then(m => ({ default: m.AdminFlagged })))
+const AdminDisputes = lazy(() => load.AdminDisputes().then(m => ({ default: m.AdminDisputes })))
+const AdminUsers = lazy(() => load.AdminUsers().then(m => ({ default: m.AdminUsers })))
+const AdminUserDetail = lazy(() => load.AdminUserDetail().then(m => ({ default: m.AdminUserDetail })))
+const AdminRegions = lazy(() => load.AdminRegions().then(m => ({ default: m.AdminRegions })))
 
-const AccountSecurity = lazy(() => import('@/pages/account/Security').then(m => ({ default: m.AccountSecurity })))
+const AccountSecurity = lazy(() => load.AccountSecurity().then(m => ({ default: m.AccountSecurity })))
 
 const customerNav = [
   { to: '/customer', label: 'Dashboard' },
@@ -75,9 +76,17 @@ const adminNav = [
   { to: '/admin/security', label: 'Security' },
 ]
 
+function RouteFallback() {
+  return (
+    <div className="flex items-center justify-center py-24" role="status" aria-label="Loading">
+      <span className="w-7 h-7 rounded-full border-2 border-primary/20 border-t-primary animate-spin" />
+    </div>
+  )
+}
+
 export function AppRoutes() {
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<RouteFallback />}>
       <Routes>
         <Route element={<PublicLayout />}>
           <Route index element={<Landing />} />
