@@ -63,9 +63,9 @@ class PricingConfig(models.Model):
 class DisposalSite(models.Model):
     """A composite / waste treatment plant (point C in the A→B→C→A loop).
 
-    Waste collected at the rider's pickup is hauled here for disposal. For now a
-    single active row is seeded (KCARP, Kumasi); the quote engine picks the active
-    site via `pricing.services.get_active_disposal_site`.
+    Waste collected at the rider's pickup is hauled here for disposal. Multiple
+    active sites may exist; for each request the quote engine picks the active
+    site nearest the pickup via `pricing.services.get_nearest_disposal_site`.
     """
 
     name = models.CharField(max_length=120)

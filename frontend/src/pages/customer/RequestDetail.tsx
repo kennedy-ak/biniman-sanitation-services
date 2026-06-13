@@ -165,40 +165,38 @@ export function CustomerRequestDetail() {
         <div className="absolute inset-0 pointer-events-none"
           style={{ background: 'radial-gradient(ellipse 80% 120% at 110% 50%, rgba(93,212,160,0.08) 0%, transparent 60%)' }}
         />
-        <div className="relative flex items-stretch">
-          {/* Icon */}
-          <div className="px-7 py-8 flex items-start flex-shrink-0">
-            <div className="w-13 h-13 w-14 h-14 rounded-xl bg-white/10 flex items-center justify-center text-2xl border border-white/10">
+        <div className="relative flex flex-col sm:flex-row sm:items-stretch">
+          {/* Icon + content */}
+          <div className="flex items-start gap-4 px-5 pt-6 pb-4 sm:px-7 sm:py-8 sm:gap-5 flex-1 min-w-0">
+            <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-white/10 flex items-center justify-center text-2xl border border-white/10 flex-shrink-0">
               {WASTE_ICON[sr.waste_type] || '🛢️'}
             </div>
-          </div>
-
-          {/* Content */}
-          <div className="flex-1 py-8 min-w-0">
-            <p className="text-[10px] uppercase tracking-[2.5px] text-accent font-medium mb-2">
-              {seqLabel}
-            </p>
-            <h2 className="font-heading text-3xl text-white font-bold capitalize leading-tight">
-              {sr.waste_type.replace('_', ' ')} · {sr.volume_tier} Tank
-            </h2>
-            <div className="mt-3 flex flex-wrap items-center gap-3">
-              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide ${badge.cls}`}>
-                {badge.dot && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-                )}
-                {badge.label}
-              </span>
-              <span className="text-sm text-white/50">
-                Booked {new Date(sr.created_at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
-              </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] uppercase tracking-[2.5px] text-accent font-medium mb-2">
+                {seqLabel}
+              </p>
+              <h2 className="font-heading text-2xl sm:text-3xl text-white font-bold capitalize leading-tight break-words">
+                {sr.waste_type.replace('_', ' ')} · {sr.volume_tier} Tank
+              </h2>
+              <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide ${badge.cls}`}>
+                  {badge.dot && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                  )}
+                  {badge.label}
+                </span>
+                <span className="text-sm text-white/50">
+                  Booked {new Date(sr.created_at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
+                </span>
+              </div>
             </div>
           </div>
 
           {/* Price */}
-          <div className="px-8 py-8 flex flex-col items-end justify-center border-l border-white/10 flex-shrink-0">
-            <p className="text-[10px] uppercase tracking-[2px] text-white/40 mb-1.5">Quote</p>
-            <p className="font-heading text-4xl text-white leading-none">
-              <span className="text-lg font-light opacity-60 mr-1">GHS</span>
+          <div className="px-5 pb-6 pt-3 sm:px-8 sm:py-8 flex items-center justify-between gap-3 sm:flex-col sm:items-end sm:justify-center border-t border-white/10 sm:border-t-0 sm:border-l flex-shrink-0">
+            <p className="text-[10px] uppercase tracking-[2px] text-white/40 sm:mb-1.5">Quote</p>
+            <p className="font-heading text-3xl sm:text-4xl text-white leading-none">
+              <span className="text-base sm:text-lg font-light opacity-60 mr-1">GHS</span>
               {sr.quote_total}
             </p>
           </div>
@@ -211,17 +209,17 @@ export function CustomerRequestDetail() {
           to={`/customer/requests/${sr.id}/pay`}
           className="block bg-gradient-to-r from-accent to-amber-300 text-charcoal rounded-2xl p-5 shadow-sm hover:shadow-md transition group"
         >
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-white/40 grid place-items-center text-xl">💳</div>
-              <div>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-10 h-10 rounded-xl bg-white/40 grid place-items-center text-xl flex-shrink-0">💳</div>
+              <div className="min-w-0">
                 <div className="font-bold">Complete payment to dispatch a driver</div>
                 <div className="text-sm text-charcoal/70">
                   Your request is on hold until payment is confirmed.
                 </div>
               </div>
             </div>
-            <span className="font-bold text-sm group-hover:translate-x-1 transition whitespace-nowrap">
+            <span className="font-bold text-sm group-hover:sm:translate-x-1 transition whitespace-nowrap self-end sm:self-auto">
               Pay GHS {sr.quote_total} →
             </span>
           </div>
@@ -363,12 +361,12 @@ export function CustomerRequestDetail() {
               <div className="w-7 h-7 rounded-lg bg-charcoal/5 flex items-center justify-center text-sm">📦</div>
               <span className="text-sm font-semibold text-charcoal">Pickup details</span>
             </div>
-            <div className="grid grid-cols-2 border-t border-charcoal/6">
-              <div className="px-6 py-5 border-r border-charcoal/6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 border-t border-charcoal/6">
+              <div className="px-6 py-5 border-b sm:border-b-0 sm:border-r border-charcoal/6 min-w-0">
                 <p className="text-[10px] uppercase tracking-[1.8px] text-charcoal/45 font-medium mb-2.5">Location</p>
-                <div className="flex items-center gap-2 text-sm font-medium text-charcoal">
+                <div className="flex items-center gap-2 text-sm font-medium text-charcoal min-w-0">
                   <span className="w-7 h-7 rounded-lg bg-charcoal/5 flex items-center justify-center text-sm flex-shrink-0">📍</span>
-                  <span className="capitalize">{sr.pickup_address || `${sr.pickup_lat}, ${sr.pickup_lng}`}</span>
+                  <span className="capitalize break-words min-w-0">{sr.pickup_address || `${sr.pickup_lat}, ${sr.pickup_lng}`}</span>
                 </div>
               </div>
               <div className="px-6 py-5">
@@ -378,7 +376,7 @@ export function CustomerRequestDetail() {
                   <span className="capitalize">{sr.volume_tier} Tank</span>
                 </div>
               </div>
-              <div className="col-span-2 px-6 py-5 border-t border-charcoal/6">
+              <div className="sm:col-span-2 px-6 py-5 border-t border-charcoal/6">
                 <p className="text-[10px] uppercase tracking-[1.8px] text-charcoal/45 font-medium mb-2">Notes for driver</p>
                 <p className="text-sm text-charcoal/50 italic">
                   {sr.notes || 'No notes provided'}

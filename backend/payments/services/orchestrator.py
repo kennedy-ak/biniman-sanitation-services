@@ -24,9 +24,19 @@ logger = logging.getLogger(__name__)
 
 
 def initialize_payment_for_request(request: ServiceRequest) -> Payment:
-    """Create Payment row + Paystack initialize call (mocked when no key)."""
-    if hasattr(request, "payment"):
-        return request.payment
+    """Create — or refresh — the Payment row + Paystack initialize call (mocked when no key).
+
+    Paystack checkout links and access codes are single-use and expire: once a
+    customer opens (or abandons) a checkout, reopening the same authorization_url
+    surfaces "We could not start this transaction. It's either because the link is
+    incorrect or the transaction is already completed." So when a Payment already
+    exists but has NOT yet succeeded, mint a fresh Paystack transaction and
+    overwrite the stale reference/URL rather than handing back the dead link.
+    A succeeded payment is returned untouched — never re-charge a paid request.
+    """
+    existing = getattr(request, "payment", None)
+    if existing is not None and existing.status == PaymentStatus.SUCCEEDED:
+        return existing
 
     # Paystack rejects .local TLDs; use a real-looking domain for receipts.
     # Customers without an email get a deterministic placeholder address.
@@ -34,6 +44,24 @@ def initialize_payment_for_request(request: ServiceRequest) -> Payment:
     init = paystack.initialize_transaction(
         email=email, amount_ghs=request.quote_total
     )
+
+    if existing is not None:
+        # Re-issue a fresh checkout link onto the existing (pending/failed) row.
+        existing.amount = request.quote_total
+        existing.paystack_reference = init["reference"]
+        existing.paystack_authorization_url = init.get("authorization_url", "")
+        existing.paystack_access_code = init.get("access_code", "")
+        existing.status = PaymentStatus.PENDING
+        existing.save(update_fields=[
+            "amount",
+            "paystack_reference",
+            "paystack_authorization_url",
+            "paystack_access_code",
+            "status",
+            "updated_at",
+        ])
+        return existing
+
     payment = Payment.objects.create(
         request=request,
         customer=request.customer,

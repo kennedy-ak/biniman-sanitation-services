@@ -32,8 +32,25 @@ def get_or_default_config(region: Optional[Region]) -> PricingConfig:
 
 
 def get_active_disposal_site() -> Optional["DisposalSite"]:
-    """The composite plant (C). For now a single active row; lowest id wins."""
+    """An active composite plant (C). Lowest id wins.
+
+    Prefer :func:`get_nearest_disposal_site` when the pickup is known so the
+    loop A→B→C→A uses the closest site; this stays as a coordinate-free fallback.
+    """
     return DisposalSite.objects.filter(is_active=True).order_by("id").first()
+
+
+def get_nearest_disposal_site(lat: float, lng: float) -> Optional["DisposalSite"]:
+    """The active composite plant (C) closest to the pickup (B).
+
+    With multiple active sites the loop A→B→C→A is shortest when C is the site
+    nearest the pickup, so we pick by haversine to B. Returns ``None`` when no
+    active site exists.
+    """
+    sites = list(DisposalSite.objects.filter(is_active=True))
+    if not sites:
+        return None
+    return min(sites, key=lambda s: haversine_km(lat, lng, float(s.lat), float(s.lng)))
 
 
 @dataclass
@@ -123,6 +140,7 @@ __all__ = [
     "haversine_km",
     "get_or_default_config",
     "get_active_disposal_site",
+    "get_nearest_disposal_site",
     "Quote",
     "calculate_quote",
     "volume_multiplier",
