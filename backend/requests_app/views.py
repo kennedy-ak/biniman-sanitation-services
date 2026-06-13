@@ -16,7 +16,7 @@ from drivers.permissions import IsDriver
 from pricing.distance import road_distance_km, road_distance_km_path
 from pricing.services import (
     calculate_quote,
-    get_active_disposal_site,
+    get_nearest_disposal_site,
     get_or_default_config,
     haversine_km,
 )
@@ -88,11 +88,11 @@ def quote_preview(request):
     data = serializer.validated_data
     region = get_object_or_404(Region, pk=data["region_id"])
 
-    site = get_active_disposal_site()
+    pickup_lat, pickup_lng = float(data["pickup_lat"]), float(data["pickup_lng"])
+    site = get_nearest_disposal_site(pickup_lat, pickup_lng)
     if site is None:
         raise ValidationError({"detail": "No disposal site is configured.", "code": "no_disposal_site"})
 
-    pickup_lat, pickup_lng = float(data["pickup_lat"]), float(data["pickup_lng"])
     driver = _nearest_idle_driver(pickup_lat, pickup_lng)
     if driver is None:
         return Response({"no_drivers": True})
@@ -134,11 +134,11 @@ def create_request(request):
     data = serializer.validated_data
     region = get_object_or_404(Region, pk=data["region_id"])
 
-    site = get_active_disposal_site()
+    pickup_lat, pickup_lng = float(data["pickup_lat"]), float(data["pickup_lng"])
+    site = get_nearest_disposal_site(pickup_lat, pickup_lng)
     if site is None:
         raise ValidationError({"detail": "No disposal site is configured.", "code": "no_disposal_site"})
 
-    pickup_lat, pickup_lng = float(data["pickup_lat"]), float(data["pickup_lng"])
     driver = _nearest_idle_driver(pickup_lat, pickup_lng)
     if driver is None:
         raise ValidationError({

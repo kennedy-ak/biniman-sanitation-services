@@ -14,6 +14,20 @@ class PricingConfigAdmin(admin.ModelAdmin):
 
 @admin.register(DisposalSite)
 class DisposalSiteAdmin(admin.ModelAdmin):
-    list_display = ("name", "region", "lat", "lng", "is_active")
+    """Manage the disposal sites (point C). Add as many as needed — the quote
+    engine picks the active site nearest each pickup for the A→B→C→A loop."""
+
+    list_display = ("name", "region", "lat", "lng", "is_active", "created_at")
+    list_editable = ("is_active",)
     list_filter = ("is_active", "region")
     search_fields = ("name",)
+    ordering = ("name",)
+    readonly_fields = ("created_at",)
+    fieldsets = (
+        (None, {"fields": ("name", "region", "is_active")}),
+        ("Location", {
+            "fields": ("lat", "lng"),
+            "description": "Decimal degrees, e.g. lat 6.5983125, lng -1.5840625.",
+        }),
+        ("Meta", {"fields": ("created_at",)}),
+    )

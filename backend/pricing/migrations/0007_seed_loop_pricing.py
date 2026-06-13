@@ -3,8 +3,8 @@ from decimal import Decimal
 from django.db import migrations
 
 KCARP_NAME = "KCARP — Kumasi Compost & Recycling Plant"
-KCARP_LAT = Decimal("6.7160000")
-KCARP_LNG = Decimal("-1.5160000")
+KCARP_LAT = Decimal("6.5983125")
+KCARP_LNG = Decimal("-1.5840625")
 
 
 def seed(apps, _schema_editor):
