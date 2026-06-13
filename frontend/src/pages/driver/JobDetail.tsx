@@ -5,6 +5,7 @@ import {
   Phone, MessageCircle, Droplet, Package, FileText,
 } from 'lucide-react'
 import { fetchDriverHistory, fetchRequest } from '@/api/requests'
+import { RatingForm } from '@/components/RatingForm'
 
 const STATUS_STEPS = [
   { value: 'pending',   label: 'Submitted',      desc: 'Request received',     Icon: Send },
@@ -104,8 +105,8 @@ export function DriverJobDetail() {
           </h1>
           <p className="text-sm text-white/50 mb-5">{dateStr}</p>
 
-          {/* Stats */}
-          <div className="grid grid-cols-3 gap-3">
+          {/* Stats — stack on mobile so large GHS amounts stay on one line */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
             <div className="bg-white/10 border border-white/15 rounded-xl px-5 py-4">
               <p className="text-[9px] uppercase tracking-[2px] text-white/50 font-semibold mb-1.5">Your earnings</p>
               <p className="font-sans font-bold text-[22px] text-[#6ee7a7] leading-none">
@@ -135,7 +136,7 @@ export function DriverJobDetail() {
       </div>
 
       {/* ── Two-column section ── */}
-      <div className="grid grid-cols-2 gap-4 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
 
         {/* Timeline */}
         <div className="bg-white border border-charcoal/8 rounded-2xl shadow-sm p-5">
@@ -246,6 +247,11 @@ export function DriverJobDetail() {
 
         </div>
       </div>
+
+      {/* Rate the customer (bidirectional ratings — shown once the job is done) */}
+      {isCompleted && job.customer && (
+        <RatingForm requestId={job.id} label="Rate your customer" />
+      )}
     </div>
   )
 }

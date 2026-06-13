@@ -32,7 +32,7 @@ from requests_app.services.matching import (
     offer_to_next_batch,
     mark_unfulfilled,
 )
-from requests_app.tasks import handle_batch_timeout
+from requests_app.tasks import handle_batch_timeout, recover_stuck_cascades
 
 
 NO_THROTTLES = {
@@ -374,6 +374,46 @@ class UnfulfilledRefundTests(TestCase):
             )
         sr.refresh_from_db()
         self.assertEqual(sr.status, RequestStatus.UNFULFILLED.value)
+
+
+@override_settings(**TEST_OVERRIDES)
+class RecoverStuckCascadeTests(TestCase):
+    """recover_stuck_cascades must rescue ASSIGNED requests whose offer batch
+    expired but whose handle_batch_timeout countdown never ran (worker was down)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.region = Region.objects.create(name="Recover Region", code="RCV")
+        cls.customer = _make_user(phone="+233200000070", role=Role.CUSTOMER)
+        PricingConfig.objects.create(
+            region=cls.region, matching_radius_km=20, parallel_offer_count=2,
+        )
+
+    def _assigned_request_with_batch(self):
+        sr = _make_request(self.customer, self.region)
+        _make_driver(phone="+233241190001", lat=5.6037, lng=-0.1870)
+        batch = offer_to_next_batch(sr)
+        sr.refresh_from_db()
+        self.assertEqual(sr.status, RequestStatus.ASSIGNED.value)
+        return sr, batch[0].batch_uuid
+
+    def test_requeues_timeout_for_expired_assigned_batch(self):
+        _sr, batch_uuid = self._assigned_request_with_batch()
+        # Batch expired well past the 2-minute grace, still PENDING → stuck.
+        RequestAssignment.objects.filter(batch_uuid=batch_uuid).update(
+            expires_at=timezone.now() - timedelta(minutes=5)
+        )
+
+        with patch("requests_app.tasks.handle_batch_timeout.delay") as timeout_mock:
+            recover_stuck_cascades()
+            timeout_mock.assert_called_once_with(str(batch_uuid))
+
+    def test_leaves_unexpired_batch_alone(self):
+        _sr, _batch_uuid = self._assigned_request_with_batch()
+        # Offer window still open → not stuck, must not be touched.
+        with patch("requests_app.tasks.handle_batch_timeout.delay") as timeout_mock:
+            recover_stuck_cascades()
+            timeout_mock.assert_not_called()
 
 
 @override_settings(**TEST_OVERRIDES)

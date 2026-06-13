@@ -6,7 +6,12 @@ from celery import shared_task
 from django.db import transaction
 from django.utils import timezone
 
-from requests_app.models import RequestAssignment, RequestStatus, ServiceRequest
+from requests_app.models import (
+    AssignmentOutcome,
+    RequestAssignment,
+    RequestStatus,
+    ServiceRequest,
+)
 from requests_app.services.matching import (
     batch_has_acceptance,
     expire_batch,
@@ -137,16 +142,22 @@ def auto_offline_stale_drivers() -> None:
 
 @shared_task
 def recover_stuck_cascades() -> None:
-    """Periodic safety net: find requests whose payment succeeded but cascade
-    never fired (or was silently dropped), and re-queue start_cascade for them.
+    """Periodic safety net for cascades that stalled because a Celery task was
+    dropped (e.g. the worker was down when a countdown fired). Runs every 2
+    minutes via Celery Beat; every action below is idempotent.
 
-    Runs every 2 minutes via Celery Beat. Safe to run repeatedly — start_cascade
-    exits immediately if the request is no longer PENDING.
+    1. PENDING with a succeeded payment → cascade never fired: re-queue it.
+    2. ASSIGNED with an expired, still-PENDING offer batch → the
+       handle_batch_timeout countdown never ran, so the request is frozen mid
+       cascade and the customer is blocked from booking again: re-queue the
+       timeout (which re-checks acceptance + status before acting).
     """
     from datetime import timedelta
     from payments.models import Payment, PaymentStatus
 
     grace = timezone.now() - timedelta(minutes=2)
+
+    # 1. Payment succeeded but the request is still PENDING.
     stuck = (
         Payment.objects.filter(
             status=PaymentStatus.SUCCEEDED,
@@ -159,6 +170,22 @@ def recover_stuck_cascades() -> None:
     for request_id in stuck:
         logger.warning("Recovering stuck cascade for request %s", request_id)
         start_cascade.delay(request_id)
+
+    # 2. ASSIGNED requests whose offer batch expired but never timed out.
+    stuck_batches = (
+        RequestAssignment.objects.filter(
+            request__status=RequestStatus.ASSIGNED.value,
+            outcome=AssignmentOutcome.PENDING,
+            expires_at__lte=grace,
+        )
+        .values_list("batch_uuid", flat=True)
+        .distinct()
+    )
+    for batch_uuid in stuck_batches:
+        if batch_uuid is None:
+            continue
+        logger.warning("Recovering stuck assigned batch %s", batch_uuid)
+        handle_batch_timeout.delay(str(batch_uuid))
 
 
 @shared_task

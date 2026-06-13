@@ -27,6 +27,11 @@ export interface DriverLocationEvent {
 
 export type RequestSocketEvent = RequestStatusEvent | DriverLocationEvent
 
+// Reconnecting backoff: 2s, 4s, 8s … capped at 15s. Resets on a clean open.
+function backoffDelay(attempt: number): number {
+  return Math.min(1000 * 2 ** attempt, 15_000)
+}
+
 export function useRequestSocket(requestId: number | null) {
   const [latest, setLatest] = useState<RequestStatusEvent | null>(null)
   const [driverLoc, setDriverLoc] = useState<{ lat: number; lng: number } | null>(null)
@@ -34,31 +39,48 @@ export function useRequestSocket(requestId: number | null) {
 
   useEffect(() => {
     if (!requestId) return
-    const token = localStorage.getItem(ACCESS_KEY)
-    if (!token) return
+    let cancelled = false
+    let attempt = 0
+    let reconnectTimer: ReturnType<typeof setTimeout> | undefined
 
-    const url = `${wsBase()}/ws/request/${requestId}/?token=${encodeURIComponent(token)}`
-    const ws = new WebSocket(url)
-    wsRef.current = ws
+    const connect = () => {
+      const token = localStorage.getItem(ACCESS_KEY)
+      if (!token || cancelled) return
 
-    ws.onmessage = (ev) => {
-      try {
-        const msg = JSON.parse(ev.data) as RequestSocketEvent
-        if (msg.type === 'driver.location') {
-          setDriverLoc({ lat: msg.lat, lng: msg.lng })
-        } else {
-          setLatest(msg as RequestStatusEvent)
+      const url = `${wsBase()}/ws/request/${requestId}/?token=${encodeURIComponent(token)}`
+      const ws = new WebSocket(url)
+      wsRef.current = ws
+
+      ws.onopen = () => {
+        attempt = 0
+      }
+      ws.onmessage = (ev) => {
+        try {
+          const msg = JSON.parse(ev.data) as RequestSocketEvent
+          if (msg.type === 'driver.location') {
+            setDriverLoc({ lat: msg.lat, lng: msg.lng })
+          } else {
+            setLatest(msg as RequestStatusEvent)
+          }
+        } catch {
+          // ignore
         }
-      } catch {
-        // ignore
+      }
+      // onerror always precedes onclose; let onclose own the reconnect.
+      ws.onerror = () => ws.close()
+      ws.onclose = () => {
+        wsRef.current = null
+        if (cancelled) return
+        reconnectTimer = setTimeout(connect, backoffDelay(++attempt))
       }
     }
-    ws.onclose = () => {
-      wsRef.current = null
-    }
+
+    connect()
 
     return () => {
-      ws.close()
+      cancelled = true
+      if (reconnectTimer) clearTimeout(reconnectTimer)
+      wsRef.current?.close()
     }
   }, [requestId])
 
@@ -79,26 +101,42 @@ export function useDriverSocket(enabled: boolean) {
 
   useEffect(() => {
     if (!enabled) return
-    const token = localStorage.getItem(ACCESS_KEY)
-    if (!token) return
+    let cancelled = false
+    let attempt = 0
+    let reconnectTimer: ReturnType<typeof setTimeout> | undefined
 
-    const url = `${wsBase()}/ws/driver/?token=${encodeURIComponent(token)}`
-    const ws = new WebSocket(url)
-    wsRef.current = ws
+    const connect = () => {
+      const token = localStorage.getItem(ACCESS_KEY)
+      if (!token || cancelled) return
 
-    ws.onmessage = (ev) => {
-      try {
-        setEvent(JSON.parse(ev.data) as DriverOfferEvent)
-      } catch {
-        // ignore
+      const url = `${wsBase()}/ws/driver/?token=${encodeURIComponent(token)}`
+      const ws = new WebSocket(url)
+      wsRef.current = ws
+
+      ws.onopen = () => {
+        attempt = 0
+      }
+      ws.onmessage = (ev) => {
+        try {
+          setEvent(JSON.parse(ev.data) as DriverOfferEvent)
+        } catch {
+          // ignore
+        }
+      }
+      ws.onerror = () => ws.close()
+      ws.onclose = () => {
+        wsRef.current = null
+        if (cancelled) return
+        reconnectTimer = setTimeout(connect, backoffDelay(++attempt))
       }
     }
-    ws.onclose = () => {
-      wsRef.current = null
-    }
+
+    connect()
 
     return () => {
-      ws.close()
+      cancelled = true
+      if (reconnectTimer) clearTimeout(reconnectTimer)
+      wsRef.current?.close()
     }
   }, [enabled])
 
