@@ -50,7 +50,15 @@ export function CustomerDashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paystackRef])
 
-  const list = useQuery({ queryKey: ['requests', 'mine'], queryFn: fetchMyRequests })
+  // Poll while a job is in flight so a driver completing/declining updates the
+  // dashboard (and frees the "New request" gate) even when the WebSocket is down.
+  const list = useQuery({
+    queryKey: ['requests', 'mine'],
+    queryFn: fetchMyRequests,
+    refetchInterval: (query) =>
+      (query.state.data ?? []).some((r) => ACTIVE_STATUSES.includes(r.status)) ? 12_000 : false,
+    refetchOnWindowFocus: true,
+  })
   const requests = list.data ?? []
   const active = requests.find((r) => ACTIVE_STATUSES.includes(r.status))
   const completed = requests.filter((r) => r.status === 'completed')
@@ -243,13 +251,13 @@ function ActiveJobBanner({ req }: { req: ServiceRequest }) {
             {meta.label}
           </span>
         </div>
-        <div className="mt-5 grid sm:grid-cols-3 gap-3">
+        <div className="mt-5 grid grid-cols-3 gap-2 sm:gap-3">
           {[
             { label: 'Quote', value: `GHS ${req.quote_total}` },
             { label: 'Driver', value: req.driver?.user.full_name || req.driver?.user.phone || 'Searching…' },
             { label: 'Vehicle', value: req.driver?.vehicle_reg || '—' },
           ].map((m) => (
-            <div key={m.label} className="bg-white/10 border border-white/15 rounded-xl px-4 py-3">
+            <div key={m.label} className="bg-white/10 border border-white/15 rounded-xl px-3 py-3 sm:px-4 min-w-0">
               <p className="text-[10px] uppercase tracking-wider text-white/50 font-medium">{m.label}</p>
               <p className="mt-0.5 font-semibold text-white text-sm truncate">{m.value}</p>
             </div>
